@@ -35,8 +35,15 @@ export function parseTable(text) {
   let li = 0;
   while (li < lines.length && lines[li].trim() === '') li++;
   const headerLine = lines[li++].replace(/^\s*#\s*/, '').trim();
-  const sep = headerLine.includes(',') ? /\s*,\s*/ : /\s+/;
-  const names = headerLine.split(sep).filter((s) => s.length);
+  // Decide on the separator from the first data row (a stray comma in the
+  // header should not turn a whitespace-separated file into a CSV)
+  let firstRow = '';
+  for (let k = li; k < lines.length; k++) {
+    const t = lines[k].trim();
+    if (t && t[0] !== '#') { firstRow = t; break; }
+  }
+  const sep = firstRow.includes(',') ? /\s*,\s*|\s+/ : /\s+/;
+  const names = headerLine.split(/\s*,\s*|\s+/).filter((s) => s.length);
 
   const rows = [];
   for (; li < lines.length; li++) {

@@ -23,6 +23,14 @@ export const COLS = {
   vlos: 'V_Z' // velocity along the line of sight, km/s
 };
 
+// Optional galaxy columns. If present they enable the split of the velocity into
+// host halo motion and satellite motion within the host, and the
+// centrals/satellites subset mode.
+export const OPT_COLS = {
+  vhost: 'V_Z_host',    // line-of-sight velocity of the host halo, km/s (= V_Z for centrals)
+  central: 'is_central' // 1 = central, 0 = satellite
+};
+
 // One unit of the `age` column is 3.08567758e19 s = 977.79 Gyr
 const AGE_UNIT_GYR = 3.08567758e19 / (3.15576e7 * 1e9);
 
@@ -35,6 +43,9 @@ const absMag = (L) => -2.5 * Math.log10(L);
 //   scale       multiply the raw column by this before display (does not affect ranking)
 //   log         show the histogram on a log10 axis
 //   excludeZero galaxies with exactly 0 are treated as undefined and left out of rankings
+//   centralsOnly property only defined for centrals; satellites are left out of rankings
+//   menu        false: do not offer the property in the split-by-property menu
+//   format      optional function turning a raw value into the displayed string
 //   extra       optional function giving a secondary string for a raw value
 export const PROPERTIES = {
   Y:          { label: 'Real-space position', symbol: 'Y', unit: 'Mpc/h' },
@@ -51,6 +62,9 @@ export const PROPERTIES = {
   delta:      { label: 'Local matter overdensity', symbol: 'δ', unit: '' },
   c_v:        { label: 'Velocity-based halo concentration', symbol: 'c_v', unit: '', excludeZero: true },
   I_z:        { label: 'Projected total mass inertia tensor', symbol: 'I_z', unit: 'km/s' },
+  is_central: { label: 'Central or satellite', unit: '', menu: false, format: (v) => (v === 1 ? 'central' : 'satellite') },
+  sat_frac:   { label: 'Mass fraction in satellites', symbol: 'f_sat', unit: '', centralsOnly: true },
+  V_Z_host:   { label: 'Host halo line-of-sight velocity', symbol: 'V_Z,host', unit: 'km/s' },
 };
 
 export function propMeta(name) {

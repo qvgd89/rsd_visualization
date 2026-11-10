@@ -92,6 +92,12 @@ export class ScatterPlot {
     this._viewChanged();
   }
 
+  // Centre the view on (cx, cy) with the given visible width (Mpc/h) along the shorter side
+  setView(cx, cy, width) {
+    this.view = { cx, cy, k: Math.min(this.pw, this.ph) / width };
+    this._viewChanged();
+  }
+
   zoomBy(f, sx, sy) {
     const v = this.view;
     if (sx === undefined) { sx = MARGIN.left + this.pw / 2; sy = MARGIN.top + this.ph / 2; }

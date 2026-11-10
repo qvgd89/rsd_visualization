@@ -23,7 +23,28 @@
         <button id="alpha-1" title="Physical RSD">α = 1</button>
         <button id="animate" title="Animate α between 0 and 1">▶ Animate 0↔1</button>
       </div>
-      <p class="formula">Z<sub>s</sub> = Z + α (1+z)/H(z) V<sub>Z</sub><br>
+      <div id="components" class="panel" hidden>
+        <h3>Velocity components</h3>
+        <div class="slider-row">
+          <span class="lbl wide" title="Line-of-sight velocity of the host halo: coherent large-scale flows (Kaiser effect)">Host halo<br><small>Kaiser</small></span>
+          <input type="range" id="a-halo" min="0" max="3" step="0.01" value="1">
+          <input type="number" id="a-halo-num" min="0" max="3" step="0.01" value="1">
+        </div>
+        <div class="slider-row">
+          <span class="lbl wide" title="Velocity of satellites relative to their host halo (fingers of god)">Satellite motion<br><small>fingers of god</small></span>
+          <input type="range" id="a-sat" min="0" max="3" step="0.01" value="1">
+          <input type="number" id="a-sat-num" min="0" max="3" step="0.01" value="1">
+        </div>
+        <div class="row buttons">
+          <button id="comp-full" title="a_h = 1, a_s = 1">Both</button>
+          <button id="comp-kaiser" title="a_h = 1, a_s = 0">Kaiser only</button>
+          <button id="comp-fog" title="a_h = 0, a_s = 1">Fingers of god only</button>
+        </div>
+        <p class="formula">Z<sub>s</sub> = Z + α (1+z)/H(z) [a<sub>h</sub> V<sub>Z,host</sub> + a<sub>s</sub> (V<sub>Z</sub> − V<sub>Z,host</sub>)]<br>
+          Centrals move with their host (V<sub>Z</sub> = V<sub>Z,host</sub>), so only the <span id="n-sat"></span> satellites have a fingers-of-god component.
+          <span id="dm-comp-note" hidden><br>Dark matter particles have no host decomposition and always use α V<sub>Z</sub>.</span></p>
+      </div>
+      <p class="formula"><span id="formula-simple">Z<sub>s</sub> = Z + α (1+z)/H(z) V<sub>Z</sub><br></span>
         (1+z)/H(z) = <span id="rsd-factor"></span> (Mpc/h)/(km/s)<br>
         Z<sub>s</sub> wraps periodically in the <span id="box-size"></span> Mpc/h box.</p>
     </section>
@@ -48,6 +69,7 @@
         <label><input type="radio" name="mode" value="all" checked> All galaxies</label>
         <label><input type="radio" name="mode" value="property"> Split by property</label>
         <label><input type="radio" name="mode" value="random"> Random subsets</label>
+        <label id="mode-central-label" hidden><input type="radio" name="mode" value="central"> Centrals vs satellites</label>
       </div>
 
       <div id="panel-property" class="panel" hidden>
@@ -70,7 +92,6 @@
         <div id="cut-info" class="info"></div>
         <div class="row buttons">
           <button id="split-half" title="Lowest 50% and highest 50%">50 / 50 split</button>
-          <button id="swap">Swap colours</button>
         </div>
       </div>
 
@@ -96,7 +117,8 @@
       <div id="panel-visibility" class="panel" hidden>
         <label><input type="checkbox" id="show-low" checked> Show <span class="swatch" data-group="low"></span> subset</label>
         <label><input type="checkbox" id="show-high" checked> Show <span class="swatch" data-group="high"></span> subset</label>
-        <label><input type="checkbox" id="show-rest"> Show remaining galaxies in grey</label>
+        <label id="show-rest-label"><input type="checkbox" id="show-rest"> Show remaining galaxies in grey</label>
+        <button id="swap">Swap colours</button>
       </div>
       <div id="counts" class="info"></div>
     </section>

@@ -32,8 +32,10 @@ function shuffledIndices(n, seed) {
 }
 
 export class Selector {
-  constructor(table, tieSeed = 12345) {
+  // centralCol: name of the central (1) / satellite (0) flag column, if any
+  constructor(table, centralCol = null, tieSeed = 12345) {
     this.table = table;
+    this.central = centralCol && table.columns[centralCol] ? table.columns[centralCol] : null;
     this.n = table.n;
     // Random keys used to break ties between galaxies with identical values.
     // They are fixed for the session so that subsets are nested as thresholds move.
@@ -43,19 +45,25 @@ export class Selector {
     this.orderCache = new Map();
   }
 
+  // Is the property defined for galaxy i? (meta: see PROPERTIES in config.js)
+  isDefined(name, meta, i) {
+    const x = this.table.columns[name][i];
+    if (!Number.isFinite(x)) return false;
+    if (meta.excludeZero && x === 0) return false;
+    if (meta.centralsOnly && this.central && this.central[i] !== 1) return false;
+    return true;
+  }
+
   // Indices of galaxies with a defined value of `name`, sorted ascending by value
   // (ties broken randomly).
-  rankedOrder(name, excludeZero) {
-    const key = `${name}|${excludeZero}`;
+  rankedOrder(name, meta) {
+    const key = `${name}|${!!meta.excludeZero}|${!!meta.centralsOnly}`;
     if (this.orderCache.has(key)) return this.orderCache.get(key);
     const v = this.table.columns[name];
     const tk = this.tieKey;
     const valid = [];
     for (let i = 0; i < this.n; i++) {
-      const x = v[i];
-      if (!Number.isFinite(x)) continue;
-      if (excludeZero && x === 0) continue;
-      valid.push(i);
+      if (this.isDefined(name, meta, i)) valid.push(i);
     }
     valid.sort((a, b) => (v[a] - v[b]) || (tk[a] - tk[b]));
     const order = Int32Array.from(valid);
@@ -65,8 +73,8 @@ export class Selector {
 
   // Lowest fLow and highest fHigh fractions (0..1, fLow + fHigh <= 1) of the
   // galaxies with a defined value of the property.
-  propertySplit(name, excludeZero, fLow, fHigh) {
-    const order = this.rankedOrder(name, excludeZero);
+  propertySplit(name, meta, fLow, fHigh) {
+    const order = this.rankedOrder(name, meta);
     const v = this.table.columns[name];
     const m = order.length;
     const nLow = Math.round(fLow * m);
@@ -87,6 +95,16 @@ export class Selector {
       min: m ? v[order[0]] : null,
       max: m ? v[order[m - 1]] : null,
     };
+  }
+
+  // Centrals (blue) and satellites (red)
+  centralSplit() {
+    const groups = new Uint8Array(this.n);
+    let nC = 0, nS = 0;
+    for (let i = 0; i < this.n; i++) {
+      if (this.central[i] === 1) { groups[i] = G_BLUE; nC++; } else { groups[i] = G_RED; nS++; }
+    }
+    return { groups, nValid: this.n, nExcluded: 0, nBlue: nC, nRed: nS };
   }
 
   // Two disjoint random subsets with fractions fA (blue) and fB (red) of all galaxies.

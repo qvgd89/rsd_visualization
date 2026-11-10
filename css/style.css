@@ -10,6 +10,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
 body {
   font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -119,3 +120,7 @@ button.active { background: var(--accent); color: #fff; border-color: var(--acce
 }
 
 .dimmed { opacity: .45; }
+
+#sidebar h3 { font-size: 13px; margin: 2px 0 4px; font-weight: 600; }
+.slider-row .lbl.wide { width: 98px; line-height: 1.15; }
+.slider-row .lbl small { color: var(--ink-2); font-size: 11px; }

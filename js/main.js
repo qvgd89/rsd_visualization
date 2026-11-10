@@ -1,4 +1,4 @@
-import { DATA_URL, DM_URL, COSMO, RSD_FACTOR, BOX_SIZE, COLS, COLORS, propMeta } from './config.js';
+import { DATA_URL, DM_URL, COSMO, RSD_FACTOR, BOX_SIZE, COLS, OPT_COLS, COLORS, propMeta } from './config.js';
 import { loadTable } from './data.js';
 import { Selector, G_BLUE, G_RED, G_NONE } from './selection.js';
 import { ScatterPlot } from './plot.js';
@@ -10,8 +10,10 @@ const $ = (id) => document.getElementById(id);
 // Application state
 // ---------------------------------------------------------------------------
 const state = {
-  alpha: 1,              // RSD strength multiplier
-  mode: 'all',           // 'all' | 'property' | 'random'
+  alpha: 1,              // overall RSD strength multiplier
+  aHalo: 1,              // weight of the host halo velocity (Kaiser)
+  aSat: 1,               // weight of the satellite velocity relative to the host (fingers of god)
+  mode: 'all',           // 'all' | 'property' | 'random' | 'central'
   prop: 'M_s',
   pLow: 50, pHigh: 50,   // percent, property split
   fA: 50, fB: 50,        // percent, random split
@@ -25,6 +27,8 @@ const state = {
 
 let table, selector, plot, perm;
 let xCol, zReal, vLos, zRsd;   // Float64Arrays
+let vHost = null;              // host halo line-of-sight velocity (optional column)
+let isCentral = null;          // 1 = central, 0 = satellite (optional column)
 let split = null;              // result of the current subset selection
 let galaxyLayers = [];         // plot layers for the galaxies (subsets)
 // Dark matter particles, loaded on first use: { n, x, zReal, vLos, zRsd, idx }
@@ -46,6 +50,8 @@ function emit(event) {
 function snapshot() {
   return {
     alpha: state.alpha,
+    aHalo: state.aHalo,   // weight of host halo velocity
+    aSat: state.aSat,     // weight of satellite velocity relative to host
     mode: state.mode,
     n: table.n,
     boxSize: BOX_SIZE,
@@ -53,6 +59,8 @@ function snapshot() {
     x: xCol,           // Y coordinate (Mpc/h)
     zReal,             // real-space Z (Mpc/h)
     zRsd,              // redshift-space Z (Mpc/h), wrapped into [0, L)
+    vLos,              // V_Z (km/s)
+    vHost,             // V_Z,host (km/s) or null
     groups: split ? split.groups : null, // Uint8Array, 1 = blue, 2 = red (see selection.js)
     columns: table.columns,
     // dark matter particles (null until first shown): { n, x, zReal, zRsd }
@@ -64,6 +72,8 @@ window.rsdApp = {
   subscribe(fn) { listeners.push(fn); if (table) fn('init', snapshot()); return () => listeners.splice(listeners.indexOf(fn), 1); },
   snapshot: () => snapshot(),
   state,
+  // e.g. rsdApp.setView(1080, 1180, 40): centre on (Y, Z_s) showing 40 Mpc/h
+  setView: (cx, cy, width) => plot.setView(cx, cy, width),
 };
 
 // ---------------------------------------------------------------------------
@@ -79,8 +89,23 @@ function applyRSD(zr, v, out) {
   }
 }
 
+// Galaxies: Z_s = Z + α (1+z)/H [a_h V_host + a_s (V - V_host)]
+function applyGalaxyRSD() {
+  if (!vHost) { applyRSD(zReal, vLos, zRsd); return; }
+  const s = state.alpha * RSD_FACTOR;
+  const ah = state.aHalo, as = state.aSat;
+  const L = BOX_SIZE;
+  for (let i = 0; i < zRsd.length; i++) {
+    const vh = vHost[i];
+    let z = zReal[i] + s * (ah * vh + as * (vLos[i] - vh));
+    z -= L * Math.floor(z / L);
+    zRsd[i] = z;
+  }
+}
+
 function updateRSD() {
-  applyRSD(zReal, vLos, zRsd);
+  applyGalaxyRSD();
+  $('dm-comp-note').hidden = !(state.showDM && (state.aHalo !== 1 || state.aSat !== 1));
   if (dm) applyRSD(dm.zReal, dm.vLos, dm.zRsd);
   plot.request();
   if (tooltipIdx >= 0) showTooltip(tooltipIdx, tooltipPos);
@@ -97,7 +122,9 @@ function updateGroups() {
     split = null;
   } else if (state.mode === 'property') {
     const meta = propMeta(state.prop);
-    split = selector.propertySplit(state.prop, meta.excludeZero, state.pLow / 100, state.pHigh / 100);
+    split = selector.propertySplit(state.prop, meta, state.pLow / 100, state.pHigh / 100);
+  } else if (state.mode === 'central') {
+    split = selector.centralSplit();
   } else {
     split = selector.randomSplit(state.fA / 100, state.fB / 100, state.seed);
   }
@@ -185,6 +212,7 @@ function displayValue(name, raw) {
 }
 function fmtProp(name, raw, withUnit = true) {
   const m = propMeta(name);
+  if (m.format) return m.format(raw);
   let s = fmtNum(displayValue(name, raw));
   if (withUnit && m.unit) s += ' ' + m.unit;
   if (m.extra && Number.isFinite(raw) && raw > 0) s += ` (${m.extra(raw)})`;
@@ -214,6 +242,7 @@ function updatePanels() {
   $('panel-property').hidden = mode !== 'property';
   $('panel-random').hidden = mode !== 'random';
   $('panel-visibility').hidden = mode === 'all';
+  $('show-rest-label').hidden = mode === 'central';
   const c = colors();
   document.querySelectorAll('.swatch[data-group=low]').forEach((el) => (el.style.background = c.low));
   document.querySelectorAll('.swatch[data-group=high]').forEach((el) => (el.style.background = c.high));
@@ -244,18 +273,25 @@ function updatePanels() {
     if (s.nBlue > 0) parts.push(`<span class="swatch" style="background:${c.low}"></span> ${m.sym} ≤ <b>${fmtProp(state.prop, s.lowCut)}</b>`);
     if (s.nRed > 0) parts.push(`<span class="swatch" style="background:${c.high}"></span> ${m.sym} ≥ <b>${fmtProp(state.prop, s.highCut)}</b>`);
     parts.push(`Range: ${fmtProp(state.prop, s.min, false)} – ${fmtProp(state.prop, s.max)}`);
-    if (s.nExcluded) parts.push(`${fmtInt(s.nExcluded)} galaxies with ${m.sym} = 0 left out (undefined).`);
+    if (s.nExcluded) {
+      parts.push(m.centralsOnly
+        ? `${fmtInt(s.nExcluded)} satellites left out (${m.sym} is defined for centrals only).`
+        : `${fmtInt(s.nExcluded)} galaxies with ${m.sym} = 0 left out (undefined).`);
+    }
     parts.push('Ties broken randomly so fractions are exact.');
     cut.innerHTML = parts.join('<br>');
     drawHistogram($('hist'), {
       values: histValues(state.prop),
-      order: selector.rankedOrder(state.prop, m.excludeZero),
+      order: selector.rankedOrder(state.prop, m),
       groups: s.groups,
       colors: c,
       lowCut: s.nBlue ? histValues(state.prop)[orderAt(s, 'low')] : null,
       highCut: s.nRed ? histValues(state.prop)[orderAt(s, 'high')] : null,
       xLabel: (m.log ? 'log₁₀ ' : '') + m.sym + (m.unit ? ` [${m.unit}]` : ''),
     });
+  } else if (mode === 'central') {
+    lowName = 'Centrals';
+    highName = 'Satellites';
   } else {
     lowName = `Random subset A (${state.fA}%)`;
     highName = `Random subset B (${state.fB}%)`;
@@ -273,7 +309,7 @@ function updatePanels() {
 }
 
 function orderAt(s, which) {
-  const order = selector.rankedOrder(state.prop, propMeta(state.prop).excludeZero);
+  const order = selector.rankedOrder(state.prop, propMeta(state.prop));
   return which === 'low' ? order[s.nBlue - 1] : order[order.length - s.nRed];
 }
 
@@ -294,8 +330,11 @@ function showTooltip(i, p) {
   const rows = [`<tr><td>Z<sub>s</sub></td><td class="num">${fmtNum(zRsd[i])} Mpc/h</td></tr>`];
   for (const name of table.names) {
     const m = propMeta(name);
-    const undef = m.excludeZero && table.columns[name][i] === 0;
-    rows.push(`<tr><td>${m.sym}</td><td class="num">${undef ? 'undefined' : fmtProp(name, table.columns[name][i])}</td></tr>`);
+    const undef = !selector.isDefined(name, m, i);
+    rows.push(`<tr><td>${m.symbol ? m.sym : m.label}</td><td class="num">${undef ? 'undefined' : fmtProp(name, table.columns[name][i])}</td></tr>`);
+  }
+  if (vHost && isCentral && isCentral[i] !== 1) {
+    rows.push(`<tr><td>V_Z − V_Z,host</td><td class="num">${fmtNum(vLos[i] - vHost[i])} km/s</td></tr>`);
   }
   tip.innerHTML = `<div><b>Galaxy #${i}</b></div><table>${rows.join('')}</table>`;
   tip.hidden = false;
@@ -354,12 +393,29 @@ function setupControls() {
     animating.raf = requestAnimationFrame(step);
   };
 
+  // velocity components (host halo motion / satellite motion within the host)
+  if (vHost) {
+    $('components').hidden = false;
+    $('formula-simple').hidden = true;
+    const setH = linkSlider('a-halo', 'a-halo-num', (v) => { state.aHalo = v; updateRSD(); });
+    const setS = linkSlider('a-sat', 'a-sat-num', (v) => { state.aSat = v; updateRSD(); });
+    const preset = (h, sv) => () => { state.aHalo = h; state.aSat = sv; setH(h); setS(sv); updateRSD(); };
+    $('comp-full').onclick = preset(1, 1);
+    $('comp-kaiser').onclick = preset(1, 0);
+    $('comp-fog').onclick = preset(0, 1);
+    let nSat = 0;
+    if (isCentral) for (let i = 0; i < table.n; i++) if (isCentral[i] !== 1) nSat++;
+    $('n-sat').textContent = isCentral ? `${fmtInt(nSat)} (${((100 * nSat) / table.n).toFixed(0)}%)` : '';
+  }
+  if (isCentral) $('mode-central-label').hidden = false;
+
   document.querySelectorAll('input[name=mode]').forEach((el) =>
     el.addEventListener('change', () => { state.mode = el.value; updateGroups(); }));
 
   // property dropdown: every column of the table
   const sel = $('prop');
   for (const name of table.names) {
+    if (propMeta(name).menu === false) continue;
     const o = document.createElement('option');
     o.value = name;
     o.textContent = propMeta(name).full;
@@ -402,6 +458,7 @@ function setupControls() {
   $('show-dm').addEventListener('change', async (e) => {
     state.showDM = e.target.checked;
     $('dm-controls').hidden = !state.showDM;
+    $('dm-comp-note').hidden = !(state.showDM && (state.aHalo !== 1 || state.aSat !== 1));
     if (state.showDM && !dm) {
       try { await ensureDM(); } catch (err) { console.error(err); return; }
     }
@@ -449,7 +506,9 @@ async function main() {
   zReal = table.columns[COLS.los];
   vLos = table.columns[COLS.vlos];
   zRsd = new Float64Array(table.n);
-  selector = new Selector(table);
+  vHost = table.columns[OPT_COLS.vhost] || null;
+  isCentral = table.columns[OPT_COLS.central] || null;
+  selector = new Selector(table, OPT_COLS.central);
   perm = ScatterPlot.permutation(table.n);
 
   plot = new ScatterPlot($('plot'), {

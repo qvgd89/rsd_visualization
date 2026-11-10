@@ -12,6 +12,17 @@ plane-parallel approximation:
 and Z_s is wrapped periodically in the box (L = 1906.8 Mpc/h). α = 1 is the
 physical RSD and α = 0 is real space.
 
+If the galaxy table has a `V_Z_host` column, the velocity is split into the motion
+of the host halo (large-scale flows → Kaiser effect) and the motion of satellites
+within their host (→ fingers of god), each with its own weight:
+
+    Z_s = Z + α (1+z)/H(z) [a_h V_Z,host + a_s (V_Z − V_Z,host)]
+
+Centrals move with their host (V_Z = V_Z,host), so only satellites carry a
+fingers-of-god component. Note that "host halo motion" includes non-linear infall
+onto haloes, not only the linear-theory (Kaiser) velocity. Dark matter particles
+have no host decomposition and always use α V_Z.
+
 ## Running
 
 The page is static HTML/JavaScript with no dependencies or build step. Because it
@@ -28,6 +39,8 @@ repository (Settings → Pages → deploy from branch, root folder).
 ## Features
 
 - **RSD strength slider** α ∈ [0, 3], with α = 0 / α = 1 buttons and a 0↔1 animation.
+- **Velocity components**: sliders a_h (host halo / Kaiser) and a_s (satellites /
+  fingers of god), with *Both*, *Kaiser only* and *Fingers of god only* presets.
 - **Galaxies and/or dark matter**: dark matter particles (`particles.csv`) can be shown
   in grey underneath the galaxies, or on their own. They are loaded the first time
   they are switched on and get the same RSD. Separate point size/opacity controls.
@@ -36,8 +49,11 @@ repository (Settings → Pages → deploy from branch, root folder).
   - *Split by property*: lowest p₁ % (blue) and highest p₂ % (red) of any column,
     with a histogram showing the cuts and a one-click 50/50 split. Ties in the property are broken randomly
     (with a fixed seed), so the fractions are exact. Galaxies with `c_v = 0` or
-    `sigma_V_DM = 0` are treated as undefined for those properties and left out.
+    `sigma_V_DM = 0` are treated as undefined for those properties and left out
+    (the `c_v = 0` galaxies are exactly the satellites). `sat_frac` is a host
+    property defined for centrals only, so satellites are left out of its ranking.
   - *Random subsets*: two disjoint random subsets with chosen fractions; *New random draw* reseeds.
+  - *Centrals vs satellites* (uses the `is_central` column).
   - Each subset, and the remaining galaxies (grey), can be toggled on and off; colours can be swapped.
 - **Zoom/pan**: scroll or pinch to zoom, drag to pan, double-click to zoom in
   (shift+double-click out), shift+drag to zoom to a rectangle, *Reset view*.
@@ -48,7 +64,8 @@ repository (Settings → Pages → deploy from branch, root folder).
 ## Data
 
 `galaxies.csv` and `particles.csv` are whitespace (or comma) separated with a header
-line, optionally starting with `#`. Required columns: `Y`, `Z` (Mpc/h) and `V_Z` (km/s). Every
+line, optionally starting with `#`. Required columns: `Y`, `Z` (Mpc/h) and `V_Z` (km/s).
+Optional galaxy columns: `V_Z_host` (km/s) and `is_central` (1/0). Every
 column automatically appears in the property dropdown, so **new properties can be
 added just by adding columns to the file**. To give a new column a readable label,
 units, a log-scale histogram or an "undefined if zero" rule, add an entry to
@@ -82,7 +99,11 @@ window.rsdApp.subscribe((event, snap) => {
   // snap.columns, snap.boxSize, snap.rsdFactor,
   // snap.dm = { n, x, zReal, zRsd } once the dark matter has been loaded (else null)
   // event 'dm' fires when the dark matter finishes loading
+  // snap.aHalo, snap.aSat, snap.vLos, snap.vHost for the velocity components
 });
 ```
+
+`rsdApp.setView(cy, cz, width)` centres the plot on (Y, Z_s) with the given width
+in Mpc/h, e.g. `rsdApp.setView(1080, 1180, 40)` for a rich cluster.
 
 The empty `<section id="stats-panels">` in `index.html` is reserved for such panels.
