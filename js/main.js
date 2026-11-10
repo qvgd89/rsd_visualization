@@ -1,0 +1,391 @@
+import { DATA_URL, COSMO, RSD_FACTOR, BOX_SIZE, COLS, COLORS, propMeta } from './config.js';
+import { loadTable } from './data.js';
+import { Selector, G_BLUE, G_RED, G_NONE } from './selection.js';
+import { ScatterPlot } from './plot.js';
+import { drawHistogram } from './hist.js';
+
+const $ = (id) => document.getElementById(id);
+
+// ---------------------------------------------------------------------------
+// Application state
+// ---------------------------------------------------------------------------
+const state = {
+  alpha: 1,              // RSD strength multiplier
+  mode: 'all',           // 'all' | 'property' | 'random'
+  prop: 'M_s',
+  pLow: 30, pHigh: 50,   // percent, property split
+  fA: 50, fB: 50,        // percent, random split
+  seed: 1,
+  swap: false,
+  showLow: true, showHigh: true, showRest: false,
+};
+
+let table, selector, plot, perm;
+let xCol, zReal, vLos, zRsd;   // Float64Arrays
+let split = null;              // result of the current subset selection
+
+// ---------------------------------------------------------------------------
+// Hooks for additional summary statistics / plots.
+// Register with window.rsdApp.subscribe(fn); fn(event, snapshot) is called with
+// event = 'rsd' whenever the redshift-space positions change and 'groups'
+// whenever the subsets change (and once with 'init' after loading).
+// ---------------------------------------------------------------------------
+const listeners = [];
+function emit(event) {
+  const snap = snapshot();
+  for (const fn of listeners) {
+    try { fn(event, snap); } catch (e) { console.error(e); }
+  }
+}
+function snapshot() {
+  return {
+    alpha: state.alpha,
+    mode: state.mode,
+    n: table.n,
+    boxSize: BOX_SIZE,
+    rsdFactor: RSD_FACTOR,
+    x: xCol,           // Y coordinate (Mpc/h)
+    zReal,             // real-space Z (Mpc/h)
+    zRsd,              // redshift-space Z (Mpc/h), wrapped into [0, L)
+    groups: split ? split.groups : null, // Uint8Array, 1 = blue, 2 = red (see selection.js)
+    columns: table.columns,
+    state: { ...state },
+  };
+}
+window.rsdApp = {
+  subscribe(fn) { listeners.push(fn); if (table) fn('init', snapshot()); return () => listeners.splice(listeners.indexOf(fn), 1); },
+  snapshot: () => snapshot(),
+  state,
+};
+
+// ---------------------------------------------------------------------------
+// Core computations
+// ---------------------------------------------------------------------------
+function updateRSD() {
+  const s = state.alpha * RSD_FACTOR;
+  const L = BOX_SIZE;
+  for (let i = 0; i < table.n; i++) {
+    let z = zReal[i] + s * vLos[i];
+    z -= L * Math.floor(z / L);
+    zRsd[i] = z;
+  }
+  plot.setPositions(xCol, zRsd, zReal);
+  if (tooltipIdx >= 0) showTooltip(tooltipIdx, tooltipPos);
+  emit('rsd');
+}
+
+function colors() {
+  return state.swap ? { low: COLORS.red, high: COLORS.blue } : { low: COLORS.blue, high: COLORS.red };
+}
+
+function updateGroups() {
+  const n = table.n;
+  if (state.mode === 'all') {
+    split = null;
+  } else if (state.mode === 'property') {
+    const meta = propMeta(state.prop);
+    split = selector.propertySplit(state.prop, meta.excludeZero, state.pLow / 100, state.pHigh / 100);
+  } else {
+    split = selector.randomSplit(state.fA / 100, state.fB / 100, state.seed);
+  }
+
+  const c = colors();
+  if (!split) {
+    plot.setLayers([{ idx: perm, color: COLORS.all, visible: true }]);
+  } else {
+    const g = split.groups;
+    const low = [], high = [], rest = [];
+    for (let t = 0; t < n; t++) {
+      const i = perm[t];
+      const gi = g[i];
+      if (gi === G_BLUE) low.push(i);
+      else if (gi === G_RED) high.push(i);
+      else if (gi === G_NONE) rest.push(i);
+    }
+    plot.setLayers([
+      { idx: Int32Array.from(rest), color: COLORS.rest, visible: state.showRest },
+      { idx: Int32Array.from(low), color: c.low, visible: state.showLow },
+      { idx: Int32Array.from(high), color: c.high, visible: state.showHigh },
+    ]);
+  }
+  updatePanels();
+  emit('groups');
+}
+
+// ---------------------------------------------------------------------------
+// Formatting helpers
+// ---------------------------------------------------------------------------
+function fmtNum(v) {
+  if (v === null || v === undefined || !Number.isFinite(v)) return '–';
+  const a = Math.abs(v);
+  if (a === 0) return '0';
+  if (a >= 1e5 || a < 1e-3) return v.toExponential(3);
+  if (a >= 100) return v.toFixed(1);
+  return v.toPrecision(4);
+}
+const fmtInt = (n) => n.toLocaleString('en-US');
+
+function displayValue(name, raw) {
+  const m = propMeta(name);
+  return raw * (m.scale ?? 1);
+}
+function fmtProp(name, raw, withUnit = true) {
+  const m = propMeta(name);
+  let s = fmtNum(displayValue(name, raw));
+  if (withUnit && m.unit) s += ' ' + m.unit;
+  if (m.extra && Number.isFinite(raw) && raw > 0) s += ` (${m.extra(raw)})`;
+  return s;
+}
+
+// Transformed values for the histogram (display units, log10 if requested)
+const histCache = new Map();
+function histValues(name) {
+  if (histCache.has(name)) return histCache.get(name);
+  const m = propMeta(name);
+  const raw = table.columns[name];
+  const out = new Float64Array(table.n);
+  for (let i = 0; i < table.n; i++) {
+    const v = raw[i] * (m.scale ?? 1);
+    out[i] = m.log ? (v > 0 ? Math.log10(v) : NaN) : v;
+  }
+  histCache.set(name, out);
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// UI updates
+// ---------------------------------------------------------------------------
+function updatePanels() {
+  const mode = state.mode;
+  $('panel-property').hidden = mode !== 'property';
+  $('panel-random').hidden = mode !== 'random';
+  $('panel-visibility').hidden = mode === 'all';
+  const c = colors();
+  document.querySelectorAll('.swatch[data-group=low]').forEach((el) => (el.style.background = c.low));
+  document.querySelectorAll('.swatch[data-group=high]').forEach((el) => (el.style.background = c.high));
+
+  const legend = $('legend');
+  const counts = $('counts');
+  if (mode === 'all') {
+    legend.innerHTML = `<div><span class="swatch" style="background:${COLORS.all}"></span> All galaxies (${fmtInt(table.n)})</div>`;
+    counts.innerHTML = `<b>${fmtInt(table.n)}</b> galaxies shown.`;
+    return;
+  }
+
+  const s = split;
+  const rest = s.nValid - s.nBlue - s.nRed;
+  let lowName, highName;
+  if (mode === 'property') {
+    const m = propMeta(state.prop);
+    lowName = `Lowest ${state.pLow}% ${m.label}`;
+    highName = `Highest ${state.pHigh}% ${m.label}`;
+    const cut = $('cut-info');
+    const parts = [];
+    if (s.nBlue > 0) parts.push(`<span class="swatch" style="background:${c.low}"></span> ${state.prop} ≤ <b>${fmtProp(state.prop, s.lowCut)}</b>`);
+    if (s.nRed > 0) parts.push(`<span class="swatch" style="background:${c.high}"></span> ${state.prop} ≥ <b>${fmtProp(state.prop, s.highCut)}</b>`);
+    parts.push(`Range: ${fmtProp(state.prop, s.min, false)} – ${fmtProp(state.prop, s.max)}`);
+    if (s.nExcluded) parts.push(`${fmtInt(s.nExcluded)} galaxies with ${state.prop} = 0 left out (undefined).`);
+    parts.push('Ties broken randomly so fractions are exact.');
+    cut.innerHTML = parts.join('<br>');
+    drawHistogram($('hist'), {
+      values: histValues(state.prop),
+      order: selector.rankedOrder(state.prop, m.excludeZero),
+      groups: s.groups,
+      colors: c,
+      lowCut: s.nBlue ? histValues(state.prop)[orderAt(s, 'low')] : null,
+      highCut: s.nRed ? histValues(state.prop)[orderAt(s, 'high')] : null,
+      xLabel: (m.log ? 'log₁₀ ' : '') + state.prop + (m.unit ? ` [${m.unit}]` : ''),
+    });
+  } else {
+    lowName = `Random subset A (${state.fA}%)`;
+    highName = `Random subset B (${state.fB}%)`;
+    $('seed').textContent = state.seed;
+  }
+  const lg = [];
+  if (state.showLow) lg.push(`<div><span class="swatch" style="background:${c.low}"></span> ${lowName} (${fmtInt(s.nBlue)})</div>`);
+  if (state.showHigh) lg.push(`<div><span class="swatch" style="background:${c.high}"></span> ${highName} (${fmtInt(s.nRed)})</div>`);
+  if (state.showRest) lg.push(`<div><span class="swatch" style="background:${COLORS.rest}"></span> Others (${fmtInt(rest)})</div>`);
+  legend.innerHTML = lg.join('');
+  counts.innerHTML = `<b>${fmtInt(s.nBlue)}</b> + <b>${fmtInt(s.nRed)}</b> galaxies in subsets, ${fmtInt(rest)} others` +
+    (s.nExcluded ? `, ${fmtInt(s.nExcluded)} undefined` : '') + '.';
+}
+
+function orderAt(s, which) {
+  const order = selector.rankedOrder(state.prop, propMeta(state.prop).excludeZero);
+  return which === 'low' ? order[s.nBlue - 1] : order[order.length - s.nRed];
+}
+
+function updateViewInfo() {
+  const r = plot.visibleRange();
+  const w = r.x1 - r.x0, h = r.y1 - r.y0;
+  const zoom = plot.view.k / plot.fitScale();
+  $('view-info').textContent = `View ${fmtNum(w)} × ${fmtNum(h)} Mpc/h · zoom ×${zoom < 10 ? zoom.toFixed(2) : zoom.toFixed(0)}`;
+}
+
+// Tooltip
+let tooltipIdx = -1, tooltipPos = null;
+function showTooltip(i, p) {
+  const tip = $('tooltip');
+  tooltipIdx = i; tooltipPos = p;
+  plot.setHighlight(i);
+  if (i < 0 || !p) { tip.hidden = true; return; }
+  const rows = [`<tr><td>Z<sub>s</sub></td><td class="num">${fmtNum(zRsd[i])} Mpc/h</td></tr>`];
+  for (const name of table.names) {
+    const m = propMeta(name);
+    const undef = m.excludeZero && table.columns[name][i] === 0;
+    rows.push(`<tr><td>${name}</td><td class="num">${undef ? 'undefined' : fmtProp(name, table.columns[name][i])}</td></tr>`);
+  }
+  tip.innerHTML = `<div><b>Galaxy #${i}</b></div><table>${rows.join('')}</table>`;
+  tip.hidden = false;
+  const wrap = $('plot-wrap');
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  let x = p[0] + 14, y = p[1] + 14;
+  if (x + tw > wrap.clientWidth - 4) x = p[0] - tw - 14;
+  if (y + th > wrap.clientHeight - 4) y = Math.max(4, wrap.clientHeight - th - 4);
+  tip.style.left = Math.max(4, x) + 'px';
+  tip.style.top = y + 'px';
+}
+
+// ---------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------
+function linkSlider(rangeId, numId, onChange) {
+  const r = $(rangeId), nIn = $(numId);
+  r.addEventListener('input', () => { nIn.value = r.value; onChange(parseFloat(r.value)); });
+  nIn.addEventListener('change', () => {
+    let v = parseFloat(nIn.value);
+    if (!Number.isFinite(v)) v = parseFloat(r.value);
+    v = Math.min(Math.max(v, parseFloat(r.min)), parseFloat(r.max));
+    nIn.value = v; r.value = v;
+    onChange(v);
+  });
+  return (v) => { r.value = v; nIn.value = v; };
+}
+
+let animating = null;
+function stopAnimation() {
+  if (animating) { cancelAnimationFrame(animating.raf); animating = null; $('animate').classList.remove('active'); $('animate').textContent = '▶ Animate 0↔1'; }
+}
+
+function setupControls() {
+  const setAlpha = linkSlider('alpha', 'alpha-num', (v) => { stopAnimation(); state.alpha = v; updateRSD(); });
+  const goAlpha = (v) => { stopAnimation(); state.alpha = v; setAlpha(v); updateRSD(); };
+  $('alpha-0').onclick = () => goAlpha(0);
+  $('alpha-1').onclick = () => goAlpha(1);
+  $('animate').onclick = () => {
+    if (animating) { stopAnimation(); return; }
+    const period = 4000;
+    // start the cycle at the current alpha (clamped to [0,1])
+    const a0 = Math.min(Math.max(state.alpha, 0), 1);
+    const t0 = performance.now() - (Math.acos(1 - 2 * a0) / (2 * Math.PI)) * period;
+    animating = {};
+    $('animate').classList.add('active');
+    $('animate').textContent = '■ Stop';
+    const step = (now) => {
+      if (!animating) return;
+      const a = 0.5 - 0.5 * Math.cos((2 * Math.PI * (now - t0)) / period);
+      state.alpha = Math.round(a * 1000) / 1000;
+      setAlpha(state.alpha.toFixed(2));
+      updateRSD();
+      animating.raf = requestAnimationFrame(step);
+    };
+    animating.raf = requestAnimationFrame(step);
+  };
+
+  document.querySelectorAll('input[name=mode]').forEach((el) =>
+    el.addEventListener('change', () => { state.mode = el.value; updateGroups(); }));
+
+  // property dropdown: every column of the table
+  const sel = $('prop');
+  for (const name of table.names) {
+    const o = document.createElement('option');
+    o.value = name;
+    o.textContent = `${name} — ${propMeta(name).label}`;
+    sel.appendChild(o);
+  }
+  if (!table.names.includes(state.prop)) state.prop = table.names[0];
+  sel.value = state.prop;
+  sel.addEventListener('change', () => { state.prop = sel.value; updateGroups(); });
+
+  // percentage pairs whose sum must not exceed 100
+  const pair = (aKey, bKey, aIds, bIds) => {
+    let setA, setB;
+    setA = linkSlider(aIds[0], aIds[1], (v) => {
+      state[aKey] = v;
+      if (state[aKey] + state[bKey] > 100) { state[bKey] = 100 - v; setB(state[bKey]); }
+      updateGroups();
+    });
+    setB = linkSlider(bIds[0], bIds[1], (v) => {
+      state[bKey] = v;
+      if (state[aKey] + state[bKey] > 100) { state[aKey] = 100 - v; setA(state[aKey]); }
+      updateGroups();
+    });
+  };
+  pair('pLow', 'pHigh', ['p-low', 'p-low-num'], ['p-high', 'p-high-num']);
+  pair('fA', 'fB', ['f-a', 'f-a-num'], ['f-b', 'f-b-num']);
+
+  $('swap').onclick = () => { state.swap = !state.swap; updateGroups(); };
+  $('reseed').onclick = () => { state.seed = Math.floor(Math.random() * 1e6) + 1; updateGroups(); };
+
+  const vis = (id, key) => $(id).addEventListener('change', (e) => { state[key] = e.target.checked; updateGroups(); });
+  vis('show-low', 'showLow'); vis('show-high', 'showHigh'); vis('show-rest', 'showRest');
+
+  $('radius').addEventListener('input', (e) => plot.setStyle({ radius: parseFloat(e.target.value) }));
+  $('opacity').addEventListener('input', (e) => plot.setStyle({ opacity: parseFloat(e.target.value) }));
+  $('show-lines').addEventListener('change', (e) => plot.setStyle({ showLines: e.target.checked }));
+  $('show-box').addEventListener('change', (e) => plot.setStyle({ showBox: e.target.checked }));
+  $('zoom-in').onclick = () => plot.zoomBy(1.6);
+  $('zoom-out').onclick = () => plot.zoomBy(1 / 1.6);
+  $('reset-view').onclick = () => plot.resetView();
+
+  window.addEventListener('resize', () => { if (state.mode === 'property') updatePanels(); });
+}
+
+// ---------------------------------------------------------------------------
+// Start-up
+// ---------------------------------------------------------------------------
+async function main() {
+  $('z-val').textContent = COSMO.z;
+  $('rsd-factor').textContent = RSD_FACTOR.toPrecision(5);
+  $('box-size').textContent = BOX_SIZE.toFixed(1);
+
+  const loading = $('loading');
+  try {
+    table = await loadTable(DATA_URL, (got, total) => {
+      loading.textContent = total
+        ? `Loading galaxies… ${Math.round((100 * got) / total)}%`
+        : `Loading galaxies… ${(got / 1e6).toFixed(1)} MB`;
+    });
+  } catch (e) {
+    loading.textContent = `Failed to load ${DATA_URL}: ${e.message}. ` +
+      'If you opened index.html directly from disk, serve the folder over HTTP instead (e.g. python3 -m http.server).';
+    throw e;
+  }
+  for (const c of Object.values(COLS)) {
+    if (!table.columns[c]) { loading.textContent = `Column ${c} missing from ${DATA_URL}`; return; }
+  }
+
+  xCol = table.columns[COLS.x];
+  zReal = table.columns[COLS.los];
+  vLos = table.columns[COLS.vlos];
+  zRsd = new Float64Array(table.n);
+  selector = new Selector(table);
+  perm = ScatterPlot.permutation(table.n);
+
+  plot = new ScatterPlot($('plot'), {
+    boxSize: BOX_SIZE,
+    xLabel: `${COLS.x}  [Mpc/h]`,
+    yLabel: `${COLS.los}  (redshift space, line of sight ↑)  [Mpc/h]`,
+  });
+  plot.onViewChange = updateViewInfo;
+  plot.onHover = showTooltip;
+
+  setupControls();
+  updateRSD();
+  updateGroups();
+  updateViewInfo();
+  loading.hidden = true;
+  emit('init');
+}
+
+main();

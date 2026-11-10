@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RSD Explorer</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <h1>Redshift-space distortions</h1>
+    <p class="sub">FLAMINGO galaxies, thin slice, z = <span id="z-val"></span>. Plane-parallel RSD along Z.</p>
+
+    <section>
+      <h2>RSD strength</h2>
+      <div class="row">
+        <input type="range" id="alpha" min="0" max="3" step="0.01" value="1">
+        <input type="number" id="alpha-num" min="0" max="3" step="0.01" value="1">
+      </div>
+      <div class="row buttons">
+        <button id="alpha-0" title="Real space">α = 0</button>
+        <button id="alpha-1" title="Physical RSD">α = 1</button>
+        <button id="animate" title="Animate α between 0 and 1">▶ Animate 0↔1</button>
+      </div>
+      <p class="formula">Z<sub>s</sub> = Z + α (1+z)/H(z) V<sub>Z</sub><br>
+        (1+z)/H(z) = <span id="rsd-factor"></span> (Mpc/h)/(km/s)<br>
+        Z<sub>s</sub> wraps periodically in the <span id="box-size"></span> Mpc/h box.</p>
+    </section>
+
+    <section>
+      <h2>Galaxy subsets</h2>
+      <div class="modes" role="radiogroup">
+        <label><input type="radio" name="mode" value="all" checked> All galaxies</label>
+        <label><input type="radio" name="mode" value="property"> Split by property</label>
+        <label><input type="radio" name="mode" value="random"> Random subsets</label>
+      </div>
+
+      <div id="panel-property" class="panel" hidden>
+        <label class="block">Property
+          <select id="prop"></select>
+        </label>
+        <div class="slider-row">
+          <span class="swatch" data-group="low"></span>
+          <span class="lbl">Lowest</span>
+          <input type="range" id="p-low" min="0" max="100" step="1" value="30">
+          <input type="number" id="p-low-num" min="0" max="100" step="1" value="30"><span>%</span>
+        </div>
+        <div class="slider-row">
+          <span class="swatch" data-group="high"></span>
+          <span class="lbl">Highest</span>
+          <input type="range" id="p-high" min="0" max="100" step="1" value="50">
+          <input type="number" id="p-high-num" min="0" max="100" step="1" value="50"><span>%</span>
+        </div>
+        <div class="hist-wrap"><canvas id="hist"></canvas></div>
+        <div id="cut-info" class="info"></div>
+        <button id="swap">Swap colours</button>
+      </div>
+
+      <div id="panel-random" class="panel" hidden>
+        <div class="slider-row">
+          <span class="swatch" data-group="low"></span>
+          <span class="lbl">Subset A</span>
+          <input type="range" id="f-a" min="0" max="100" step="1" value="50">
+          <input type="number" id="f-a-num" min="0" max="100" step="1" value="50"><span>%</span>
+        </div>
+        <div class="slider-row">
+          <span class="swatch" data-group="high"></span>
+          <span class="lbl">Subset B</span>
+          <input type="range" id="f-b" min="0" max="100" step="1" value="50">
+          <input type="number" id="f-b-num" min="0" max="100" step="1" value="50"><span>%</span>
+        </div>
+        <div class="row buttons">
+          <button id="reseed">New random draw</button>
+          <span class="info">seed <span id="seed"></span></span>
+        </div>
+      </div>
+
+      <div id="panel-visibility" class="panel" hidden>
+        <label><input type="checkbox" id="show-low" checked> Show <span class="swatch" data-group="low"></span> subset</label>
+        <label><input type="checkbox" id="show-high" checked> Show <span class="swatch" data-group="high"></span> subset</label>
+        <label><input type="checkbox" id="show-rest"> Show remaining galaxies in grey</label>
+      </div>
+      <div id="counts" class="info"></div>
+    </section>
+
+    <section>
+      <h2>Display</h2>
+      <label class="block">Point size
+        <input type="range" id="radius" min="0.3" max="5" step="0.1" value="1.2">
+      </label>
+      <label class="block">Opacity
+        <input type="range" id="opacity" min="0.05" max="1" step="0.05" value="0.8">
+      </label>
+      <label><input type="checkbox" id="show-lines"> Show displacement from real space (best when zoomed in)</label>
+      <label><input type="checkbox" id="show-box" checked> Show box edges</label>
+      <div class="row buttons">
+        <button id="zoom-in" title="Zoom in">＋</button>
+        <button id="zoom-out" title="Zoom out">－</button>
+        <button id="reset-view">Reset view</button>
+      </div>
+      <p class="help">Scroll or pinch to zoom, drag to pan, double-click to zoom in (shift+double-click to zoom out), shift+drag to zoom to a rectangle. Hover over a galaxy to see its properties.</p>
+    </section>
+
+    <!-- Extra summary statistics / plots can be added here; see README -->
+    <section id="stats-panels" hidden></section>
+  </aside>
+
+  <main id="main">
+    <div id="plot-wrap">
+      <canvas id="plot"></canvas>
+      <div id="legend"></div>
+      <div id="view-info"></div>
+      <div id="tooltip" hidden></div>
+      <div id="loading">Loading galaxies…</div>
+    </div>
+  </main>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
