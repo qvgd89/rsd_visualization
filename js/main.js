@@ -1,4 +1,4 @@
-import { DATA_URL, COSMO, RSD_FACTOR, BOX_SIZE, COLS, COLORS, propMeta } from './config.js';
+import { DATA_URL, DM_URL, COSMO, RSD_FACTOR, BOX_SIZE, COLS, COLORS, propMeta } from './config.js';
 import { loadTable } from './data.js';
 import { Selector, G_BLUE, G_RED, G_NONE } from './selection.js';
 import { ScatterPlot } from './plot.js';
@@ -18,11 +18,17 @@ const state = {
   seed: 1,
   swap: false,
   showLow: true, showHigh: true, showRest: false,
+  showGal: true,         // draw galaxies
+  showDM: false,         // draw dark matter particles
+  dmRadius: 1, dmOpacity: 0.6,
 };
 
 let table, selector, plot, perm;
 let xCol, zReal, vLos, zRsd;   // Float64Arrays
 let split = null;              // result of the current subset selection
+let galaxyLayers = [];         // plot layers for the galaxies (subsets)
+// Dark matter particles, loaded on first use: { n, x, zReal, vLos, zRsd, idx }
+let dm = null, dmLoading = null;
 
 // ---------------------------------------------------------------------------
 // Hooks for additional summary statistics / plots.
@@ -49,6 +55,8 @@ function snapshot() {
     zRsd,              // redshift-space Z (Mpc/h), wrapped into [0, L)
     groups: split ? split.groups : null, // Uint8Array, 1 = blue, 2 = red (see selection.js)
     columns: table.columns,
+    // dark matter particles (null until first shown): { n, x, zReal, zRsd }
+    dm: dm ? { n: dm.n, x: dm.x, zReal: dm.zReal, zRsd: dm.zRsd } : null,
     state: { ...state },
   };
 }
@@ -61,15 +69,20 @@ window.rsdApp = {
 // ---------------------------------------------------------------------------
 // Core computations
 // ---------------------------------------------------------------------------
-function updateRSD() {
+function applyRSD(zr, v, out) {
   const s = state.alpha * RSD_FACTOR;
   const L = BOX_SIZE;
-  for (let i = 0; i < table.n; i++) {
-    let z = zReal[i] + s * vLos[i];
+  for (let i = 0; i < out.length; i++) {
+    let z = zr[i] + s * v[i];
     z -= L * Math.floor(z / L);
-    zRsd[i] = z;
+    out[i] = z;
   }
-  plot.setPositions(xCol, zRsd, zReal);
+}
+
+function updateRSD() {
+  applyRSD(zReal, vLos, zRsd);
+  if (dm) applyRSD(dm.zReal, dm.vLos, dm.zRsd);
+  plot.request();
   if (tooltipIdx >= 0) showTooltip(tooltipIdx, tooltipPos);
   emit('rsd');
 }
@@ -90,8 +103,9 @@ function updateGroups() {
   }
 
   const c = colors();
+  const base = { x: xCol, y: zRsd, yReal: zReal, interleave: true, lines: true, hover: true };
   if (!split) {
-    plot.setLayers([{ idx: perm, color: COLORS.all, visible: true }]);
+    galaxyLayers = [{ ...base, idx: perm, color: COLORS.all, visible: true }];
   } else {
     const g = split.groups;
     const low = [], high = [], rest = [];
@@ -102,14 +116,54 @@ function updateGroups() {
       else if (gi === G_RED) high.push(i);
       else if (gi === G_NONE) rest.push(i);
     }
-    plot.setLayers([
-      { idx: Int32Array.from(rest), color: COLORS.rest, visible: state.showRest },
-      { idx: Int32Array.from(low), color: c.low, visible: state.showLow },
-      { idx: Int32Array.from(high), color: c.high, visible: state.showHigh },
-    ]);
+    galaxyLayers = [
+      { ...base, idx: Int32Array.from(rest), color: COLORS.rest, visible: state.showRest },
+      { ...base, idx: Int32Array.from(low), color: c.low, visible: state.showLow },
+      { ...base, idx: Int32Array.from(high), color: c.high, visible: state.showHigh },
+    ];
   }
-  updatePanels();
+  refreshLayers();
   emit('groups');
+}
+
+// Combine dark matter (drawn underneath) and galaxy layers and hand them to the plot
+function refreshLayers() {
+  const layers = [];
+  if (dm) {
+    layers.push({
+      x: dm.x, y: dm.zRsd, yReal: dm.zReal, idx: dm.idx, color: COLORS.dm,
+      visible: state.showDM, radius: state.dmRadius, opacity: state.dmOpacity,
+    });
+  }
+  for (const l of galaxyLayers) layers.push({ ...l, visible: l.visible && state.showGal });
+  plot.setLayers(layers);
+  updatePanels();
+}
+
+async function ensureDM() {
+  if (dm) return dm;
+  if (!dmLoading) {
+    const status = $('dm-status');
+    dmLoading = loadTable(DM_URL, (got, total) => {
+      status.textContent = total ? `loading… ${Math.round((100 * got) / total)}%` : `loading… ${(got / 1e6).toFixed(1)} MB`;
+    }).then((t) => {
+      for (const c of Object.values(COLS)) if (!t.columns[c]) throw new Error(`column ${c} missing`);
+      const d = {
+        n: t.n, x: t.columns[COLS.x], zReal: t.columns[COLS.los], vLos: t.columns[COLS.vlos],
+        zRsd: new Float64Array(t.n), idx: ScatterPlot.permutation(t.n, 4321),
+      };
+      applyRSD(d.zReal, d.vLos, d.zRsd);
+      dm = d;
+      status.textContent = `(${fmtInt(d.n)})`;
+      emit('dm');
+      return d;
+    }).catch((e) => {
+      status.textContent = `failed to load ${DM_URL}: ${e.message}`;
+      dmLoading = null;
+      throw e;
+    });
+  }
+  return dmLoading;
 }
 
 // ---------------------------------------------------------------------------
@@ -166,9 +220,15 @@ function updatePanels() {
 
   const legend = $('legend');
   const counts = $('counts');
+  $('subsets-section').classList.toggle('dimmed', !state.showGal);
+  const lg = [];
+  if (state.showDM && dm) {
+    lg.push(`<div><span class="swatch" style="background:${COLORS.dm}"></span> Dark matter particles (${fmtInt(dm.n)})</div>`);
+  }
   if (mode === 'all') {
-    legend.innerHTML = `<div><span class="swatch" style="background:${COLORS.all}"></span> All galaxies (${fmtInt(table.n)})</div>`;
-    counts.innerHTML = `<b>${fmtInt(table.n)}</b> galaxies shown.`;
+    if (state.showGal) lg.push(`<div><span class="swatch" style="background:${COLORS.all}"></span> All galaxies (${fmtInt(table.n)})</div>`);
+    legend.innerHTML = lg.join('');
+    counts.innerHTML = `<b>${fmtInt(table.n)}</b> galaxies.`;
     return;
   }
 
@@ -177,14 +237,14 @@ function updatePanels() {
   let lowName, highName;
   if (mode === 'property') {
     const m = propMeta(state.prop);
-    lowName = `Lowest ${state.pLow}% ${m.label}`;
-    highName = `Highest ${state.pHigh}% ${m.label}`;
+    lowName = `Lowest ${state.pLow}% ${m.full}`;
+    highName = `Highest ${state.pHigh}% ${m.full}`;
     const cut = $('cut-info');
     const parts = [];
-    if (s.nBlue > 0) parts.push(`<span class="swatch" style="background:${c.low}"></span> ${state.prop} ≤ <b>${fmtProp(state.prop, s.lowCut)}</b>`);
-    if (s.nRed > 0) parts.push(`<span class="swatch" style="background:${c.high}"></span> ${state.prop} ≥ <b>${fmtProp(state.prop, s.highCut)}</b>`);
+    if (s.nBlue > 0) parts.push(`<span class="swatch" style="background:${c.low}"></span> ${m.sym} ≤ <b>${fmtProp(state.prop, s.lowCut)}</b>`);
+    if (s.nRed > 0) parts.push(`<span class="swatch" style="background:${c.high}"></span> ${m.sym} ≥ <b>${fmtProp(state.prop, s.highCut)}</b>`);
     parts.push(`Range: ${fmtProp(state.prop, s.min, false)} – ${fmtProp(state.prop, s.max)}`);
-    if (s.nExcluded) parts.push(`${fmtInt(s.nExcluded)} galaxies with ${state.prop} = 0 left out (undefined).`);
+    if (s.nExcluded) parts.push(`${fmtInt(s.nExcluded)} galaxies with ${m.sym} = 0 left out (undefined).`);
     parts.push('Ties broken randomly so fractions are exact.');
     cut.innerHTML = parts.join('<br>');
     drawHistogram($('hist'), {
@@ -194,18 +254,20 @@ function updatePanels() {
       colors: c,
       lowCut: s.nBlue ? histValues(state.prop)[orderAt(s, 'low')] : null,
       highCut: s.nRed ? histValues(state.prop)[orderAt(s, 'high')] : null,
-      xLabel: (m.log ? 'log₁₀ ' : '') + state.prop + (m.unit ? ` [${m.unit}]` : ''),
+      xLabel: (m.log ? 'log₁₀ ' : '') + m.sym + (m.unit ? ` [${m.unit}]` : ''),
     });
   } else {
     lowName = `Random subset A (${state.fA}%)`;
     highName = `Random subset B (${state.fB}%)`;
     $('seed').textContent = state.seed;
   }
-  const lg = [];
+  if (!state.showGal) { legend.innerHTML = lg.join(''); }
+  else {
   if (state.showLow) lg.push(`<div><span class="swatch" style="background:${c.low}"></span> ${lowName} (${fmtInt(s.nBlue)})</div>`);
   if (state.showHigh) lg.push(`<div><span class="swatch" style="background:${c.high}"></span> ${highName} (${fmtInt(s.nRed)})</div>`);
   if (state.showRest) lg.push(`<div><span class="swatch" style="background:${COLORS.rest}"></span> Others (${fmtInt(rest)})</div>`);
   legend.innerHTML = lg.join('');
+  }
   counts.innerHTML = `<b>${fmtInt(s.nBlue)}</b> + <b>${fmtInt(s.nRed)}</b> galaxies in subsets, ${fmtInt(rest)} others` +
     (s.nExcluded ? `, ${fmtInt(s.nExcluded)} undefined` : '') + '.';
 }
@@ -233,7 +295,7 @@ function showTooltip(i, p) {
   for (const name of table.names) {
     const m = propMeta(name);
     const undef = m.excludeZero && table.columns[name][i] === 0;
-    rows.push(`<tr><td>${name}</td><td class="num">${undef ? 'undefined' : fmtProp(name, table.columns[name][i])}</td></tr>`);
+    rows.push(`<tr><td>${m.sym}</td><td class="num">${undef ? 'undefined' : fmtProp(name, table.columns[name][i])}</td></tr>`);
   }
   tip.innerHTML = `<div><b>Galaxy #${i}</b></div><table>${rows.join('')}</table>`;
   tip.hidden = false;
@@ -300,7 +362,7 @@ function setupControls() {
   for (const name of table.names) {
     const o = document.createElement('option');
     o.value = name;
-    o.textContent = `${name} — ${propMeta(name).label}`;
+    o.textContent = propMeta(name).full;
     sel.appendChild(o);
   }
   if (!table.names.includes(state.prop)) state.prop = table.names[0];
@@ -320,8 +382,14 @@ function setupControls() {
       if (state[aKey] + state[bKey] > 100) { state[aKey] = 100 - v; setA(state[aKey]); }
       updateGroups();
     });
+    return [setA, setB];
   };
-  pair('pLow', 'pHigh', ['p-low', 'p-low-num'], ['p-high', 'p-high-num']);
+  const [setPLow, setPHigh] = pair('pLow', 'pHigh', ['p-low', 'p-low-num'], ['p-high', 'p-high-num']);
+  $('split-half').onclick = () => {
+    state.pLow = 50; state.pHigh = 50;
+    setPLow(50); setPHigh(50);
+    updateGroups();
+  };
   pair('fA', 'fB', ['f-a', 'f-a-num'], ['f-b', 'f-b-num']);
 
   $('swap').onclick = () => { state.swap = !state.swap; updateGroups(); };
@@ -329,6 +397,18 @@ function setupControls() {
 
   const vis = (id, key) => $(id).addEventListener('change', (e) => { state[key] = e.target.checked; updateGroups(); });
   vis('show-low', 'showLow'); vis('show-high', 'showHigh'); vis('show-rest', 'showRest');
+
+  $('show-gal').addEventListener('change', (e) => { state.showGal = e.target.checked; refreshLayers(); });
+  $('show-dm').addEventListener('change', async (e) => {
+    state.showDM = e.target.checked;
+    $('dm-controls').hidden = !state.showDM;
+    if (state.showDM && !dm) {
+      try { await ensureDM(); } catch (err) { console.error(err); return; }
+    }
+    refreshLayers();
+  });
+  $('dm-radius').addEventListener('input', (e) => { state.dmRadius = parseFloat(e.target.value); refreshLayers(); });
+  $('dm-opacity').addEventListener('input', (e) => { state.dmOpacity = parseFloat(e.target.value); refreshLayers(); });
 
   $('radius').addEventListener('input', (e) => plot.setStyle({ radius: parseFloat(e.target.value) }));
   $('opacity').addEventListener('input', (e) => plot.setStyle({ opacity: parseFloat(e.target.value) }));

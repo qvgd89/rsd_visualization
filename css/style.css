@@ -117,3 +117,5 @@ button.active { background: var(--accent); color: #fff; border-color: var(--acce
   #sidebar { width: 100%; border-right: 0; border-bottom: 1px solid var(--line); order: 2; }
   #main { order: 1; height: 75vh; flex: none; }
 }
+
+.dimmed { opacity: .45; }

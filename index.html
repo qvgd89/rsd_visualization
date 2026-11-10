@@ -10,7 +10,7 @@
 <div id="app">
   <aside id="sidebar">
     <h1>Redshift-space distortions</h1>
-    <p class="sub">FLAMINGO galaxies, thin slice, z = <span id="z-val"></span>. Plane-parallel RSD along Z.</p>
+    <p class="sub">FLAMINGO galaxies and dark matter, thin slice, z = <span id="z-val"></span>. Plane-parallel RSD along Z.</p>
 
     <section>
       <h2>RSD strength</h2>
@@ -29,6 +29,20 @@
     </section>
 
     <section>
+      <h2>Show</h2>
+      <label><input type="checkbox" id="show-gal" checked> Galaxies</label>
+      <label><input type="checkbox" id="show-dm"> Dark matter particles <span id="dm-status" class="info"></span></label>
+      <div id="dm-controls" class="panel" hidden>
+        <label class="block">Dark matter point size
+          <input type="range" id="dm-radius" min="0.2" max="3" step="0.1" value="1">
+        </label>
+        <label class="block">Dark matter opacity
+          <input type="range" id="dm-opacity" min="0.02" max="1" step="0.02" value="0.6">
+        </label>
+      </div>
+    </section>
+
+    <section id="subsets-section">
       <h2>Galaxy subsets</h2>
       <div class="modes" role="radiogroup">
         <label><input type="radio" name="mode" value="all" checked> All galaxies</label>
@@ -54,7 +68,10 @@
         </div>
         <div class="hist-wrap"><canvas id="hist"></canvas></div>
         <div id="cut-info" class="info"></div>
-        <button id="swap">Swap colours</button>
+        <div class="row buttons">
+          <button id="split-half" title="Lowest 50% and highest 50%">50 / 50 split</button>
+          <button id="swap">Swap colours</button>
+        </div>
       </div>
 
       <div id="panel-random" class="panel" hidden>
@@ -86,10 +103,10 @@
 
     <section>
       <h2>Display</h2>
-      <label class="block">Point size
-        <input type="range" id="radius" min="0.3" max="5" step="0.1" value="1.2">
+      <label class="block">Galaxy point size
+        <input type="range" id="radius" min="0.3" max="5" step="0.1" value="1.5">
       </label>
-      <label class="block">Opacity
+      <label class="block">Galaxy opacity
         <input type="range" id="opacity" min="0.05" max="1" step="0.05" value="0.8">
       </label>
       <label><input type="checkbox" id="show-lines"> Show displacement from real space (best when zoomed in)</label>

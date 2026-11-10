@@ -17,10 +17,15 @@ export class ScatterPlot {
     this.xLabel = xLabel;
     this.yLabel = yLabel;
 
-    this.style = { radius: 1.2, opacity: 0.8, showBox: true, showLines: false };
-    this.layers = [];      // [{ idx: Int32Array, color, visible }]
-    this.x = null; this.y = null; this.yReal = null;
+    this.style = { radius: 1.5, opacity: 0.8, showBox: true, showLines: false };
+    // Each layer: { x, y, yReal, idx, color, visible,
+    //               radius?, opacity?   (override the global style)
+    //               interleave?        (galaxy subsets: drawn interleaved in chunks, on top)
+    //               lines?, hover?     (draw displacement lines / take part in hover search) }
+    // Non-interleaved layers are drawn first, in order (e.g. dark matter underneath).
+    this.layers = [];
     this.highlight = -1;
+    this._hl = null; // [x, y] arrays of the highlighted point's layer
 
     this.view = { cx: this.L / 2, cy: this.L / 2, k: 1 };
     this.onViewChange = null;
@@ -34,12 +39,6 @@ export class ScatterPlot {
   }
 
   // ---------- data ----------
-  setPositions(x, y, yReal) {
-    this.x = x; this.y = y; this.yReal = yReal;
-    this.request();
-  }
-
-  // layers: array of { idx, color, visible }, drawn interleaved in the given order
   setLayers(layers) {
     this.layers = layers;
     this.request();
@@ -147,19 +146,15 @@ export class ScatterPlot {
     const ctx = this.ctx, dpr = this.dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, this.w, this.h);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(MARGIN.left, MARGIN.top, this.pw, this.ph);
 
+    this._drawPoints();
     ctx.save();
     ctx.beginPath();
     ctx.rect(MARGIN.left, MARGIN.top, this.pw, this.ph);
     ctx.clip();
     if (this.style.showBox) this._drawBox();
-    if (this.x) {
-      if (this.style.showLines) this._drawLines();
-      this._drawPoints();
-      this._drawHighlight();
-    }
+    if (this.style.showLines) this._drawLines();
+    this._drawHighlight();
     if (this._rubber) {
       const r = this._rubber;
       ctx.strokeStyle = '#333'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1;
@@ -181,62 +176,74 @@ export class ScatterPlot {
     ctx.setLineDash([]);
   }
 
+  // Points are rasterised directly into an ImageData buffer (alpha blending done in
+  // JavaScript), which is far faster than issuing a canvas call per point when
+  // drawing a few hundred thousand points.
   _drawPoints() {
-    const ctx = this.ctx;
-    const { x, y } = this;
-    const v = this.view;
-    const r = this.style.radius;
-    const ox = MARGIN.left + this.pw / 2 - v.cx * v.k;
-    const oy = MARGIN.top + this.ph / 2 + v.cy * v.k;
-    const k = v.k;
-    const xmin = MARGIN.left - r, xmax = MARGIN.left + this.pw + r;
-    const ymin = MARGIN.top - r, ymax = MARGIN.top + this.ph + r;
-    const useRect = r * this.dpr < 1.6;
-    const d = 2 * r;
-    ctx.globalAlpha = this.style.opacity;
+    const dpr = this.dpr;
+    const W = Math.max(1, Math.round(this.pw * dpr)), H = Math.max(1, Math.round(this.ph * dpr));
+    if (!this._img || this._img.width !== W || this._img.height !== H) this._img = this.ctx.createImageData(W, H);
+    const buf = this._img.data;
+    buf.fill(255); // white background
 
-    const layers = this.layers.filter((l) => l.visible && l.idx.length);
+    const visible = this.layers.filter((l) => l.visible && l.idx.length);
+    for (const layer of visible) {
+      if (!layer.interleave) this._stampRange(layer, 0, layer.idx.length, buf, W, H);
+    }
+    const inter = visible.filter((l) => l.interleave);
     for (let c = 0; c < N_CHUNKS; c++) {
-      for (const layer of layers) {
-        const idx = layer.idx;
-        const a = Math.floor((c * idx.length) / N_CHUNKS);
-        const b = Math.floor(((c + 1) * idx.length) / N_CHUNKS);
-        if (b <= a) continue;
-        ctx.fillStyle = layer.color;
-        if (useRect) {
-          for (let t = a; t < b; t++) {
-            const i = idx[t];
-            const sx = ox + x[i] * k, sy = oy - y[i] * k;
-            if (sx < xmin || sx > xmax || sy < ymin || sy > ymax) continue;
-            ctx.fillRect(sx - r, sy - r, d, d);
-          }
-        } else {
-          ctx.beginPath();
-          for (let t = a; t < b; t++) {
-            const i = idx[t];
-            const sx = ox + x[i] * k, sy = oy - y[i] * k;
-            if (sx < xmin || sx > xmax || sy < ymin || sy > ymax) continue;
-            ctx.moveTo(sx + r, sy);
-            ctx.arc(sx, sy, r, 0, 2 * Math.PI);
-          }
-          ctx.fill();
-        }
+      for (const layer of inter) {
+        const n = layer.idx.length;
+        const a = Math.floor((c * n) / N_CHUNKS);
+        const b = Math.floor(((c + 1) * n) / N_CHUNKS);
+        if (b > a) this._stampRange(layer, a, b, buf, W, H);
       }
     }
-    ctx.globalAlpha = 1;
+    this.ctx.putImageData(this._img, Math.round(MARGIN.left * dpr), Math.round(MARGIN.top * dpr));
+  }
+
+  _stampRange(layer, a, b, buf, W, H) {
+    const { x, y, idx } = layer;
+    const v = this.view, dpr = this.dpr;
+    const rd = (layer.radius ?? this.style.radius) * dpr;  // radius in device pixels
+    const alpha = layer.opacity ?? this.style.opacity;
+    const st = stamp(rd);
+    const n = st.dx.length, R = st.R;
+    const sdx = st.dx, sdy = st.dy, scov = st.cov;
+    const [cr, cg, cb] = hexToRgb(layer.color);
+    const kd = v.k * dpr;
+    const ax = (this.pw / 2 - v.cx * v.k) * dpr;
+    const ay = (this.ph / 2 + v.cy * v.k) * dpr;
+    const wa = new Float32Array(n);
+    for (let j = 0; j < n; j++) wa[j] = scov[j] * alpha;
+    for (let t = a; t < b; t++) {
+      const i = idx[t];
+      const px = Math.floor(ax + x[i] * kd);
+      const py = Math.floor(ay - y[i] * kd);
+      if (px < -R || px >= W + R || py < -R || py >= H + R) continue;
+      const inside = px >= R && px < W - R && py >= R && py < H - R;
+      for (let j = 0; j < n; j++) {
+        const qx = px + sdx[j], qy = py + sdy[j];
+        if (!inside && (qx < 0 || qx >= W || qy < 0 || qy >= H)) continue;
+        const o = (qy * W + qx) << 2;
+        const w = wa[j];
+        buf[o] += (cr - buf[o]) * w;
+        buf[o + 1] += (cg - buf[o + 1]) * w;
+        buf[o + 2] += (cb - buf[o + 2]) * w;
+      }
+    }
   }
 
   // Lines from each galaxy's real-space position to its redshift-space position
   _drawLines() {
     const ctx = this.ctx;
-    const { x, y, yReal } = this;
-    if (!yReal) return;
     const L = this.L;
     const { x0, x1, y0, y1 } = this.visibleRange();
     ctx.lineWidth = 1;
     ctx.globalAlpha = 0.45;
     for (const layer of this.layers) {
-      if (!layer.visible) continue;
+      if (!layer.visible || !layer.lines || !layer.yReal) continue;
+      const { x, y, yReal } = layer;
       ctx.strokeStyle = layer.color;
       ctx.beginPath();
       for (const i of layer.idx) {
@@ -257,9 +264,9 @@ export class ScatterPlot {
 
   _drawHighlight() {
     const i = this.highlight;
-    if (i < 0) return;
+    if (i < 0 || !this._hl) return;
     const ctx = this.ctx;
-    const [sx, sy] = this.toScreen(this.x[i], this.y[i]);
+    const [sx, sy] = this.toScreen(this._hl[0][i], this._hl[1][i]);
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -304,19 +311,18 @@ export class ScatterPlot {
 
   // ---------- hover ----------
   nearest(sx, sy, maxDist = 8) {
-    if (!this.x) return -1;
     const [dx, dy] = this.toData(sx, sy);
     const rad = maxDist / this.view.k;
     let best = -1, bestD = rad * rad;
-    const { x, y } = this;
     for (const layer of this.layers) {
-      if (!layer.visible) continue;
+      if (!layer.visible || !layer.hover) continue;
+      const { x, y } = layer;
       for (const i of layer.idx) {
         const ex = x[i] - dx;
         if (ex > rad || ex < -rad) continue;
         const ey = y[i] - dy;
         const d2 = ex * ex + ey * ey;
-        if (d2 < bestD) { bestD = d2; best = i; }
+        if (d2 < bestD) { bestD = d2; best = i; this._hl = [x, y]; }
       }
     }
     return best;
@@ -425,6 +431,49 @@ export class ScatterPlot {
       if (this.onHover) this.onHover(-1, null);
     });
   }
+}
+
+// Pixel footprint of a point of radius rd (device pixels) centred in a pixel:
+// offsets and fractional coverage (4x4 supersampling). Cached by radius.
+const stampCache = new Map();
+function stamp(rd) {
+  const key = Math.round(rd * 100);
+  if (stampCache.has(key)) return stampCache.get(key);
+  const dx = [], dy = [], cov = [];
+  if (rd < 0.5) {
+    // smaller than a pixel: one pixel, coverage = area of a square of side 2r
+    dx.push(0); dy.push(0); cov.push(Math.max(4 * rd * rd, 0.05));
+  } else {
+    const R = Math.ceil(rd + 0.5);
+    const S = 4;
+    for (let j = -R; j <= R; j++) {
+      for (let i = -R; i <= R; i++) {
+        let c = 0;
+        for (let sj = 0; sj < S; sj++) {
+          for (let si = 0; si < S; si++) {
+            const u = i + (si + 0.5) / S - 0.5, w = j + (sj + 0.5) / S - 0.5;
+            if (u * u + w * w <= rd * rd) c++;
+          }
+        }
+        if (c) { dx.push(i); dy.push(j); cov.push(c / (S * S)); }
+      }
+    }
+  }
+  let R = 0;
+  for (let j = 0; j < dx.length; j++) R = Math.max(R, Math.abs(dx[j]), Math.abs(dy[j]));
+  const st = { dx: Int32Array.from(dx), dy: Int32Array.from(dy), cov: Float32Array.from(cov), R };
+  stampCache.set(key, st);
+  return st;
+}
+
+const rgbCache = new Map();
+function hexToRgb(hex) {
+  if (rgbCache.has(hex)) return rgbCache.get(hex);
+  const h = hex.replace('#', '');
+  const f = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const rgb = [parseInt(f.slice(0, 2), 16), parseInt(f.slice(2, 4), 16), parseInt(f.slice(4, 6), 16)];
+  rgbCache.set(hex, rgb);
+  return rgb;
 }
 
 export function niceTicks(a, b, target) {
