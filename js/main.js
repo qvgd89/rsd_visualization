@@ -13,7 +13,7 @@ const state = {
   alpha: 1,              // RSD strength multiplier
   mode: 'all',           // 'all' | 'property' | 'random'
   prop: 'M_s',
-  pLow: 30, pHigh: 50,   // percent, property split
+  pLow: 50, pHigh: 50,   // percent, property split
   fA: 50, fB: 50,        // percent, random split
   seed: 1,
   swap: false,

@@ -17,7 +17,7 @@ export class ScatterPlot {
     this.xLabel = xLabel;
     this.yLabel = yLabel;
 
-    this.style = { radius: 1.5, opacity: 0.8, showBox: true, showLines: false };
+    this.style = { radius: 2, opacity: 0.8, showBox: true, showLines: false };
     // Each layer: { x, y, yReal, idx, color, visible,
     //               radius?, opacity?   (override the global style)
     //               interleave?        (galaxy subsets: drawn interleaved in chunks, on top)
