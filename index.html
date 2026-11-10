@@ -10,14 +10,17 @@
 <div id="app">
   <aside id="sidebar">
     <h1>Redshift-space distortions</h1>
-    <p class="sub">FLAMINGO galaxies and dark matter, thin slice, z = <span id="z-val"></span>. Plane-parallel RSD along Z.</p>
+    <p class="sub">FLAMINGO galaxies and dark matter, thin slice, z = <span id="z-val"></span>. Plane-parallel RSD along Z.
+      The full galaxy sample is selected by stellar mass down to a number density of 5×10⁻⁴ h³ Mpc⁻³, matching the DESI DR2 LRG sample.</p>
 
     <section>
       <h2>RSD strength</h2>
-      <div class="row">
+      <div class="row" id="alpha-row">
+        <span class="lbl-inline">α</span>
         <input type="range" id="alpha" min="0" max="3" step="0.01" value="1">
         <input type="number" id="alpha-num" min="0" max="3" step="0.01" value="1">
       </div>
+      <p class="info" id="alpha-note" hidden>Sets α<sub>h</sub> = α<sub>s</sub> = α (shows — when they differ).</p>
       <div class="row buttons">
         <button id="alpha-0" title="Real space">α = 0</button>
         <button id="alpha-1" title="Physical RSD">α = 1</button>
@@ -26,23 +29,23 @@
       <div id="components" class="panel" hidden>
         <h3>Velocity components</h3>
         <div class="slider-row">
-          <span class="lbl wide" title="Line-of-sight velocity of the host halo: coherent large-scale flows (Kaiser effect)">Host halo<br><small>Kaiser</small></span>
+          <span class="lbl wide" title="Weight of the line-of-sight velocity of the host halo">Host halo motion α<sub>h</sub></span>
           <input type="range" id="a-halo" min="0" max="3" step="0.01" value="1">
           <input type="number" id="a-halo-num" min="0" max="3" step="0.01" value="1">
         </div>
         <div class="slider-row">
-          <span class="lbl wide" title="Velocity of satellites relative to their host halo (fingers of god)">Satellite motion<br><small>fingers of god</small></span>
+          <span class="lbl wide" title="Weight of the velocity of satellites relative to their host halo">Satellite motion α<sub>s</sub></span>
           <input type="range" id="a-sat" min="0" max="3" step="0.01" value="1">
           <input type="number" id="a-sat-num" min="0" max="3" step="0.01" value="1">
         </div>
         <div class="row buttons">
-          <button id="comp-full" title="a_h = 1, a_s = 1">Both</button>
-          <button id="comp-kaiser" title="a_h = 1, a_s = 0">Kaiser only</button>
-          <button id="comp-fog" title="a_h = 0, a_s = 1">Fingers of god only</button>
+          <button id="comp-full" title="α_h = 1, α_s = 1">Both</button>
+          <button id="comp-kaiser" title="α_h = 1, α_s = 0">Host halo only</button>
+          <button id="comp-fog" title="α_h = 0, α_s = 1">Satellites only</button>
         </div>
-        <p class="formula">Z<sub>s</sub> = Z + α (1+z)/H(z) [a<sub>h</sub> V<sub>Z,host</sub> + a<sub>s</sub> (V<sub>Z</sub> − V<sub>Z,host</sub>)]<br>
-          Centrals move with their host (V<sub>Z</sub> = V<sub>Z,host</sub>), so only the <span id="n-sat"></span> satellites have a fingers-of-god component.
-          <span id="dm-comp-note" hidden><br>Dark matter particles have no host decomposition and always use α V<sub>Z</sub>.</span></p>
+        <p class="formula">Z<sub>s</sub> = Z + (1+z)/H(z) [α<sub>h</sub> V<sub>Z,host</sub> + α<sub>s</sub> (V<sub>Z</sub> − V<sub>Z,host</sub>)]<br>
+          Centrals move with their host (V<sub>Z</sub> = V<sub>Z,host</sub>), so only the <span id="n-sat"></span> satellites are affected by α<sub>s</sub>.
+          <span id="dm-comp-note" hidden><br>Dark matter particles have no host decomposition: their full velocity is weighted by α<sub>h</sub>.</span></p>
       </div>
       <p class="formula"><span id="formula-simple">Z<sub>s</sub> = Z + α (1+z)/H(z) V<sub>Z</sub><br></span>
         (1+z)/H(z) = <span id="rsd-factor"></span> (Mpc/h)/(km/s)<br>

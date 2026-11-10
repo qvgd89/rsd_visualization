@@ -12,16 +12,21 @@ plane-parallel approximation:
 and Z_s is wrapped periodically in the box (L = 1906.8 Mpc/h). α = 1 is the
 physical RSD and α = 0 is real space.
 
+The galaxy sample is selected by stellar mass down to a number density of
+5×10⁻⁴ h³ Mpc⁻³, matching the DESI DR2 LRG sample.
+
 If the galaxy table has a `V_Z_host` column, the velocity is split into the motion
-of the host halo (large-scale flows → Kaiser effect) and the motion of satellites
-within their host (→ fingers of god), each with its own weight:
+of the host halo and the motion of satellites relative to their host, each with
+its own weight:
 
-    Z_s = Z + α (1+z)/H(z) [a_h V_Z,host + a_s (V_Z − V_Z,host)]
+    Z_s = Z + (1+z)/H(z) [α_h V_Z,host + α_s (V_Z − V_Z,host)]
 
-Centrals move with their host (V_Z = V_Z,host), so only satellites carry a
-fingers-of-god component. Note that "host halo motion" includes non-linear infall
-onto haloes, not only the linear-theory (Kaiser) velocity. Dark matter particles
-have no host decomposition and always use α V_Z.
+The global α slider sets α_h = α_s = α (and shows "—" when they differ), so there
+are only two free parameters. Centrals move with their host (V_Z = V_Z,host), so
+α_s only affects satellites. This is related to, but not the same as, the
+Kaiser / fingers-of-god split: host motion also includes non-linear infall.
+Dark matter particles have no host decomposition; their full velocity is weighted
+by α_h.
 
 ## Running
 
@@ -39,8 +44,9 @@ repository (Settings → Pages → deploy from branch, root folder).
 ## Features
 
 - **RSD strength slider** α ∈ [0, 3], with α = 0 / α = 1 buttons and a 0↔1 animation.
-- **Velocity components**: sliders a_h (host halo / Kaiser) and a_s (satellites /
-  fingers of god), with *Both*, *Kaiser only* and *Fingers of god only* presets.
+- **Velocity components**: sliders α_h (host halo motion) and α_s (satellite motion
+  relative to the host), with *Both*, *Host halo only* and *Satellites only* presets.
+  The global α slider moves both together.
 - **Galaxies and/or dark matter**: dark matter particles (`particles.csv`) can be shown
   in grey underneath the galaxies, or on their own. They are loaded the first time
   they are switched on and get the same RSD. Separate point size/opacity controls.
@@ -94,12 +100,13 @@ with the slider or the subsets:
 
 ```js
 window.rsdApp.subscribe((event, snap) => {
-  // event: 'init' | 'rsd' (α changed) | 'groups' (subsets changed)
-  // snap.alpha, snap.x (Y), snap.zReal, snap.zRsd, snap.groups (1 = blue, 2 = red),
+  // event: 'init' | 'rsd' (α_h or α_s changed) | 'groups' (subsets changed)
+  // snap.aHalo (α_h), snap.aSat (α_s), snap.alpha (= α_h = α_s, or null if they differ),
+  // snap.x (Y), snap.zReal, snap.zRsd, snap.groups (1 = blue, 2 = red),
   // snap.columns, snap.boxSize, snap.rsdFactor,
   // snap.dm = { n, x, zReal, zRsd } once the dark matter has been loaded (else null)
   // event 'dm' fires when the dark matter finishes loading
-  // snap.aHalo, snap.aSat, snap.vLos, snap.vHost for the velocity components
+  // snap.vLos, snap.vHost for the velocity components
 });
 ```
 

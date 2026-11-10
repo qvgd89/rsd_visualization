@@ -10,9 +10,11 @@ const $ = (id) => document.getElementById(id);
 // Application state
 // ---------------------------------------------------------------------------
 const state = {
-  alpha: 1,              // overall RSD strength multiplier
-  aHalo: 1,              // weight of the host halo velocity (Kaiser)
-  aSat: 1,               // weight of the satellite velocity relative to the host (fingers of god)
+  // RSD strength. The two free parameters are the weights of the host halo velocity
+  // (aHalo = α_h) and of the satellite velocity relative to the host (aSat = α_s).
+  // The global α slider sets both to the same value.
+  aHalo: 1,
+  aSat: 1,
   mode: 'all',           // 'all' | 'property' | 'random' | 'central'
   prop: 'M_s',
   pLow: 50, pHigh: 50,   // percent, property split
@@ -49,9 +51,9 @@ function emit(event) {
 }
 function snapshot() {
   return {
-    alpha: state.alpha,
-    aHalo: state.aHalo,   // weight of host halo velocity
-    aSat: state.aSat,     // weight of satellite velocity relative to host
+    aHalo: state.aHalo,   // α_h, weight of host halo velocity
+    aSat: state.aSat,     // α_s, weight of satellite velocity relative to host
+    alpha: state.aHalo === state.aSat ? state.aHalo : null, // global α (null when α_h ≠ α_s)
     mode: state.mode,
     n: table.n,
     boxSize: BOX_SIZE,
@@ -79,8 +81,10 @@ window.rsdApp = {
 // ---------------------------------------------------------------------------
 // Core computations
 // ---------------------------------------------------------------------------
+// Velocities without a host decomposition (dark matter, or galaxies when the table
+// has no host velocity column) are weighted by α_h.
 function applyRSD(zr, v, out) {
-  const s = state.alpha * RSD_FACTOR;
+  const s = state.aHalo * RSD_FACTOR;
   const L = BOX_SIZE;
   for (let i = 0; i < out.length; i++) {
     let z = zr[i] + s * v[i];
@@ -89,10 +93,10 @@ function applyRSD(zr, v, out) {
   }
 }
 
-// Galaxies: Z_s = Z + α (1+z)/H [a_h V_host + a_s (V - V_host)]
+// Galaxies: Z_s = Z + (1+z)/H [α_h V_host + α_s (V - V_host)]
 function applyGalaxyRSD() {
   if (!vHost) { applyRSD(zReal, vLos, zRsd); return; }
-  const s = state.alpha * RSD_FACTOR;
+  const s = RSD_FACTOR;
   const ah = state.aHalo, as = state.aSat;
   const L = BOX_SIZE;
   for (let i = 0; i < zRsd.length; i++) {
@@ -105,7 +109,7 @@ function applyGalaxyRSD() {
 
 function updateRSD() {
   applyGalaxyRSD();
-  $('dm-comp-note').hidden = !(state.showDM && (state.aHalo !== 1 || state.aSat !== 1));
+  $('dm-comp-note').hidden = !(state.showDM && state.aHalo !== state.aSat);
   if (dm) applyRSD(dm.zReal, dm.vLos, dm.zRsd);
   plot.request();
   if (tooltipIdx >= 0) showTooltip(tooltipIdx, tooltipPos);
@@ -369,25 +373,43 @@ function stopAnimation() {
 }
 
 function setupControls() {
-  const setAlpha = linkSlider('alpha', 'alpha-num', (v) => { stopAnimation(); state.alpha = v; updateRSD(); });
-  const goAlpha = (v) => { stopAnimation(); state.alpha = v; setAlpha(v); updateRSD(); };
-  $('alpha-0').onclick = () => goAlpha(0);
-  $('alpha-1').onclick = () => goAlpha(1);
+  // --- RSD strength: global α moves α_h and α_s in lockstep ---
+  const setAlphaUI = linkSlider('alpha', 'alpha-num', (v) => { stopAnimation(); setStrength(v, v); });
+  let setH = () => {}, setS = () => {};
+  // Set α_h and α_s and bring all three sliders in line
+  const setStrength = (h, sv) => {
+    state.aHalo = h; state.aSat = sv;
+    setH(h); setS(sv);
+    syncGlobal();
+    updateRSD();
+  };
+  const syncGlobal = () => {
+    const mixed = state.aHalo !== state.aSat;
+    $('alpha-row').classList.toggle('mixed', mixed);
+    if (mixed) {
+      $('alpha').value = (state.aHalo + state.aSat) / 2;
+      $('alpha-num').value = '';
+      $('alpha-num').placeholder = '—';
+    } else {
+      setAlphaUI(state.aHalo);
+    }
+  };
+  $('alpha-0').onclick = () => { stopAnimation(); setStrength(0, 0); };
+  $('alpha-1').onclick = () => { stopAnimation(); setStrength(1, 1); };
   $('animate').onclick = () => {
     if (animating) { stopAnimation(); return; }
     const period = 4000;
-    // start the cycle at the current alpha (clamped to [0,1])
-    const a0 = Math.min(Math.max(state.alpha, 0), 1);
+    // start the cycle at the current α (clamped to [0,1]); mixed values start from 0
+    const cur = state.aHalo === state.aSat ? state.aHalo : 0;
+    const a0 = Math.min(Math.max(cur, 0), 1);
     const t0 = performance.now() - (Math.acos(1 - 2 * a0) / (2 * Math.PI)) * period;
     animating = {};
     $('animate').classList.add('active');
     $('animate').textContent = '■ Stop';
     const step = (now) => {
       if (!animating) return;
-      const a = 0.5 - 0.5 * Math.cos((2 * Math.PI * (now - t0)) / period);
-      state.alpha = Math.round(a * 1000) / 1000;
-      setAlpha(state.alpha.toFixed(2));
-      updateRSD();
+      const a = Math.round((0.5 - 0.5 * Math.cos((2 * Math.PI * (now - t0)) / period)) * 100) / 100;
+      setStrength(a, a);
       animating.raf = requestAnimationFrame(step);
     };
     animating.raf = requestAnimationFrame(step);
@@ -397,9 +419,10 @@ function setupControls() {
   if (vHost) {
     $('components').hidden = false;
     $('formula-simple').hidden = true;
-    const setH = linkSlider('a-halo', 'a-halo-num', (v) => { state.aHalo = v; updateRSD(); });
-    const setS = linkSlider('a-sat', 'a-sat-num', (v) => { state.aSat = v; updateRSD(); });
-    const preset = (h, sv) => () => { state.aHalo = h; state.aSat = sv; setH(h); setS(sv); updateRSD(); };
+    $('alpha-note').hidden = false;
+    setH = linkSlider('a-halo', 'a-halo-num', (v) => { stopAnimation(); setStrength(v, state.aSat); });
+    setS = linkSlider('a-sat', 'a-sat-num', (v) => { stopAnimation(); setStrength(state.aHalo, v); });
+    const preset = (h, sv) => () => { stopAnimation(); setStrength(h, sv); };
     $('comp-full').onclick = preset(1, 1);
     $('comp-kaiser').onclick = preset(1, 0);
     $('comp-fog').onclick = preset(0, 1);
@@ -458,7 +481,7 @@ function setupControls() {
   $('show-dm').addEventListener('change', async (e) => {
     state.showDM = e.target.checked;
     $('dm-controls').hidden = !state.showDM;
-    $('dm-comp-note').hidden = !(state.showDM && (state.aHalo !== 1 || state.aSat !== 1));
+    $('dm-comp-note').hidden = !(state.showDM && state.aHalo !== state.aSat);
     if (state.showDM && !dm) {
       try { await ensureDM(); } catch (err) { console.error(err); return; }
     }

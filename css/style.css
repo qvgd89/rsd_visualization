@@ -123,4 +123,7 @@ button.active { background: var(--accent); color: #fff; border-color: var(--acce
 
 #sidebar h3 { font-size: 13px; margin: 2px 0 4px; font-weight: 600; }
 .slider-row .lbl.wide { width: 98px; line-height: 1.15; }
+.lbl-inline { font-weight: 600; width: 14px; flex: none; }
+#alpha-row.mixed input[type=range] { opacity: .4; }
+#alpha-row.mixed input[type=number]::placeholder { color: var(--ink-2); font-style: italic; }
 .slider-row .lbl small { color: var(--ink-2); font-size: 11px; }
