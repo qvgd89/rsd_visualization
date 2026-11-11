@@ -6,6 +6,14 @@ export const DATA_URL = 'galaxies.csv';
 export const DM_URL = 'particles.csv';   // dark matter particles: Y, Z, V_Z
 export const MULTIPOLES_URL = 'multipoles.json'; // pre-computed P_l on an (alpha_h, alpha_s) grid
 
+// Separate files with the multipoles of 50/50 subsets, keyed by the property's column
+// name in galaxies.csv. Each file holds {"low": ..., "high": ...} (and optionally the
+// same alpha_h, alpha_s, k grid as multipoles.json); it is loaded when first needed.
+// Paths are relative to MULTIPOLES_URL. Splits given inside multipoles.json take precedence.
+export const PK_SPLIT_FILES = {
+  'r-z': 'multipoles_r-z.json',
+};
+
 // Spectra shown in the multipole panel: key in multipoles.json, legend label, colour.
 // A galaxy-matter cross spectrum could be added here later (e.g. key 'P0_gm').
 // Multipole panel plot settings (k in h/Mpc)

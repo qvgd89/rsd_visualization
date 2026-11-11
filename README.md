@@ -195,9 +195,15 @@ the full sample and uses the same `alpha_h`, `alpha_s` and `k` grid:
 }
 ```
 
-`low` / `high` are the galaxies below / above the median. A split may instead be
-given as the name of a separate JSON file containing `{"low": ..., "high": ...}`,
-which is then loaded only when needed.
+`low` / `high` are the galaxies below / above the median.
+
+Subsets can also live in separate files (as for colour: `multipoles_r-z.json`),
+registered in `PK_SPLIT_FILES` in `js/config.js`, e.g.
+`{ 'r-z': 'multipoles_r-z.json', 'M_s': 'multipoles_M_s.json' }`. Each file holds
+`{"low": ..., "high": ...}` and may repeat `alpha_h`, `alpha_s` and `k`, which must
+then match `multipoles.json`. A file is downloaded only when its split is selected.
+(A split can also be given inside `multipoles.json` as `"splits": {"r-z": {...}}` or
+`"splits": {"r-z": "multipoles_r-z.json"}`.)
 
 The panel follows the main view: when the galaxies are split by a property with
 subset measurements at exactly 50/50, it shows the two halves (low in blue, high in

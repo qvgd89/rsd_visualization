@@ -179,6 +179,13 @@ export class MultipolePanel {
 
   _parseSplit(sp, prop) {
     if (!sp.low || !sp.high) throw new Error(`splits.${prop}: needs "low" and "high"`);
+    // a separate split file may repeat the grid; it must match the main file
+    const same = (a, b) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) <= 1e-9 * Math.max(1, Math.abs(b[i])));
+    for (const [key, ref] of [['alpha_h', this.gridH], ['alpha_s', this.gridS], ['k', this.kTop]]) {
+      if (sp[key] && !same(sp[key].map(Number), ref.map(Number))) {
+        throw new Error(`${key} differs from the main multipoles file`);
+      }
+    }
     return {
       low: this._parseBlock(sp.low, 'low', `splits.${prop}.low`),
       high: this._parseBlock(sp.high, 'high', `splits.${prop}.high`),
