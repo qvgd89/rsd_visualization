@@ -14,6 +14,7 @@ export const MULTIPOLES_URL = 'multipoles.json'; // pre-computed P_l on an (alph
 export const PK_SPLIT_FILES = {
   'r-z': { file: 'multipoles_r-z.json', button: 'Colour split' },
   sigma_V: { file: 'multipoles_sigma_V.json', button: 'σ_V split' },
+  M_s: { file: 'multipoles_M_s.json', button: 'Stellar mass split' },
 };
 
 // Spectra shown in the multipole panel: key in multipoles.json, legend label, colour.
