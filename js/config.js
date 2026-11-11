@@ -27,10 +27,14 @@ export const PK_PLOT = {
 // level of multipoles.json and then inside each model entry. Values are given on
 // the (alpha_h, alpha_s) grid, nested [i_h][i_s] or flat with alpha_s varying
 // fastest; +-Infinity, NaN and null are allowed.
+// Statistical errors: a "<key>_err" entry next to the values (a number, or a grid
+// like the values) is shown as ± error; for the halves of a split without one,
+// `splitErr` is used.
 export const PK_PARAMS = [
   // {model} in the note is replaced by the label of `model` in multipoles.json
   { key: 'A_over_f', label: 'A/f', model: 'mu_bias',
     desc: 'A/f: zero point set by the dark matter distribution',
+    splitErr: 0.0143,  // statistical error on A/f for each half of a 50/50 split
     note: '{model} model, fitted on 0.02 < k < 0.08 h/Mpc' },
 ];
 

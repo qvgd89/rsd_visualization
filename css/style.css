@@ -176,3 +176,5 @@ label.small { font-size: 12.5px; }
 .param-note.dark { color: var(--ink); }
 .tip td.grp { font-weight: 600; padding-top: 3px; }
 #pk-split-note button { font-size: 12px; padding: 1px 7px; margin-left: 2px; }
+.param-err { font-weight: 400; font-size: 13px; color: var(--ink-2); }
+.param-pair + .param-pair { margin-left: 6px; }

@@ -227,7 +227,14 @@ export class MultipolePanel {
         const m = series.find((t) => t.kind === 'model' && t.name === p.model);
         note = note.replace('{model}', m ? m.label : (p.model || ''));
       }
-      params.push({ ...p, note, grid: paramGrid(v, nh, ns, `${what}.${p.key}`) });
+      // statistical error: "<key>_err" (number or grid), else the default for split halves
+      let err = src[p.key + '_err'];
+      if (err === undefined) for (const m of models) if (m[p.key + '_err'] !== undefined) { err = m[p.key + '_err']; break; }
+      let errConst = null, errGrid = null;
+      if (typeof err === 'number' || typeof err === 'string') errConst = Number(err);
+      else if (Array.isArray(err)) errGrid = paramGrid(err, nh, ns, `${what}.${p.key}_err`);
+      else if (group !== 'full' && p.splitErr != null) errConst = p.splitErr;
+      params.push({ ...p, note, errConst, errGrid, grid: paramGrid(v, nh, ns, `${what}.${p.key}`) });
     }
     return { label: src.label || (group === 'low' ? 'Low 50%' : group === 'high' ? 'High 50%' : ''), series, params };
   }
@@ -341,18 +348,20 @@ export class MultipolePanel {
     el.hidden = false;
     const val = (p) => interp2Masked(this.gridH, this.gridS, p.grid, ah, as);
     const undefTitle = 'Not defined here: a neighbouring grid point is infinite or missing';
-    const cell = (v) => `<span class="param-value" title="${Number.isNaN(v) ? undefTitle : ''}">${fmtParam(v)}</span>`;
+    const errOf = (p) => (p.errGrid ? interp2Masked(this.gridH, this.gridS, p.errGrid, ah, as) : p.errConst);
+    const cell = (v, e) => `<span class="param-value" title="${Number.isNaN(v) ? undefTitle : ''}">${fmtParam(v)}` +
+      (Number.isFinite(v) && Number.isFinite(e) ? `<span class="param-err"> ± ${e.toFixed(3)}</span>` : '') + '</span>';
     el.innerHTML = defs.map((p) => {
       let main;
       if (!split) {
-        main = `<span class="param-label">${escapeHtml(p.label)}</span>${cell(val(p))}`;
+        main = `<span class="param-label">${escapeHtml(p.label)}</span>${cell(val(p), errOf(p))}`;
       } else {
         const ph = split.high.params.find((q) => q.key === p.key);
         const vl = val(p), vh = ph ? val(ph) : NaN;
         const dot = (c) => `<span class="lg-dot" style="background:${c}"></span>`;
         main = `<span class="param-label">${escapeHtml(p.label)}</span>` +
-          `<span class="param-pair">${dot(this.splitColors.low)}${cell(vl)}</span>` +
-          `<span class="param-pair">${dot(this.splitColors.high)}${cell(vh)}</span>` +
+          `<span class="param-pair">${dot(this.splitColors.low)}${cell(vl, errOf(p))}</span>` +
+          `<span class="param-pair">${dot(this.splitColors.high)}${cell(vh, ph ? errOf(ph) : NaN)}</span>` +
           (p.desc ? `<span class="param-note dark">${escapeHtml(p.desc)}</span>` : '<span class="param-break"></span>') +
           `<span class="param-label">Δ${escapeHtml(p.label)}</span>${cell(diffParam(vh, vl))}` +
           `<span class="param-desc">${escapeHtml(split.high.label)} − ${escapeHtml(split.low.label)}</span>`;

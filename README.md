@@ -197,6 +197,11 @@ the full sample and uses the same `alpha_h`, `alpha_s` and `k` grid:
 
 `low` / `high` are the galaxies below / above the median.
 
+Statistical errors on fitted parameters are shown as ± error. They are read from a
+`"<key>_err"` entry next to the values (e.g. `"A_over_f_err": 0.0143`, or a grid
+like `A_over_f`); for split halves without one, `splitErr` in `PK_PARAMS`
+(currently 0.0143 for A/f) is used. No error is shown for ΔA/f.
+
 Subsets can also live in separate files (as for colour: `multipoles_r-z.json`),
 registered in `PK_SPLIT_FILES` in `js/config.js`, e.g.
 `{ 'r-z': 'multipoles_r-z.json', 'M_s': 'multipoles_M_s.json' }`. Each file holds
