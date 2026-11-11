@@ -224,7 +224,12 @@ export class MultipolePanel {
       let v = json[p.key];
       if (v === undefined) for (const m of models) if (m[p.key] !== undefined) { v = m[p.key]; break; }
       if (v === undefined) continue;
-      this.params.push({ ...p, grid: paramGrid(v, nh, ns, p.key) });
+      let note = p.note;
+      if (note && note.includes('{model}')) {
+        const m = this.series.find((s) => s.kind === 'model' && s.name === p.model);
+        note = note.replace('{model}', m ? m.label : (p.model || ''));
+      }
+      this.params.push({ ...p, note, grid: paramGrid(v, nh, ns, p.key) });
     }
 
     this._legend();
@@ -402,10 +407,6 @@ export class MultipolePanel {
       ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, top + ph); ctx.stroke();
     }
-    // subplot title
-    ctx.fillStyle = '#333'; ctx.font = font(12);
-    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    ctx.fillText(sp.label, L + 7, top + 6);
     ctx.restore();
 
     // frame, ticks and labels

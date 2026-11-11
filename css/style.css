@@ -167,5 +167,5 @@ label.small { font-size: 12.5px; }
 .pk-params { margin: 4px 0 2px; }
 .param { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
 .param-label { font-weight: 600; }
-.param-value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 4.5ch; }
+.param-value { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 4.5ch; }
 .param-note { flex-basis: 100%; color: var(--ink-2); font-size: 12px; }

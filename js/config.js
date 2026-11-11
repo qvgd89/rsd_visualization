@@ -20,7 +20,8 @@ export const PK_PLOT = {
 // the (alpha_h, alpha_s) grid, nested [i_h][i_s] or flat with alpha_s varying
 // fastest; +-Infinity, NaN and null are allowed.
 export const PK_PARAMS = [
-  { key: 'A_over_f', label: 'A/f', note: 'mu_bias model, fitted on 0.02 < k < 0.08 h/Mpc' },
+  // {model} in the note is replaced by the label of `model` in multipoles.json
+  { key: 'A_over_f', label: 'A/f', model: 'mu_bias', note: '{model} model, fitted on 0.02 < k < 0.08 h/Mpc' },
 ];
 
 // Styles in the multipole panel. Models are matched by their key in multipoles.json
