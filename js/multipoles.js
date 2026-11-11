@@ -271,6 +271,7 @@ export class MultipolePanel {
       else { txt = '—'; title = 'Not defined here: a neighbouring grid point is infinite or missing'; }
       return `<div class="param" title="${title}"><span class="param-label">${escapeHtml(p.label)}</span>` +
         `<span class="param-value">${txt}</span>` +
+        (p.desc ? `<span class="param-desc">${escapeHtml(p.desc)}</span>` : '') +
         (p.note ? `<span class="param-note">${escapeHtml(p.note)}${title ? ' · ' + title.toLowerCase() : ''}</span>` : '') + '</div>';
     }).join('');
   }
