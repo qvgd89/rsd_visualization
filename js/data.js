@@ -8,7 +8,10 @@ export async function loadTable(url, onProgress) {
   if (!resp.ok) throw new Error(`Could not load ${url}: HTTP ${resp.status}`);
 
   let text;
-  const total = Number(resp.headers.get('Content-Length')) || 0;
+  // Content-Length is the size on the wire; with gzip/brotli compression it is smaller
+  // than the decoded text, so it is only used as a progress total for uncompressed files.
+  const encoding = (resp.headers.get('Content-Encoding') || 'identity').toLowerCase();
+  const total = encoding === 'identity' ? Number(resp.headers.get('Content-Length')) || 0 : 0;
   if (resp.body && resp.body.getReader && onProgress) {
     const reader = resp.body.getReader();
     const chunks = [];
@@ -18,7 +21,7 @@ export async function loadTable(url, onProgress) {
       if (done) break;
       chunks.push(value);
       received += value.length;
-      onProgress(received, total);
+      onProgress(received, received <= total ? total : 0);
     }
     const buf = new Uint8Array(received);
     let off = 0;

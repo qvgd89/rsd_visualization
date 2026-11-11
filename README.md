@@ -41,6 +41,27 @@ python3 -m http.server 8000
 then open <http://localhost:8000>. To publish it, enable GitHub Pages for the
 repository (Settings → Pages → deploy from branch, root folder).
 
+## Hosting
+
+Everything runs in the browser; no server-side code is needed. Any static web host
+works (GitHub Pages, university web space, Netlify, ...). Upload, keeping the
+folder structure:
+
+    index.html  css/  js/  galaxies.csv  particles.csv  multipoles.json
+
+(`tools/`, `mock/` and `README.md` are not needed; `.nojekyll` only matters for
+GitHub Pages.) All paths are relative, so the site can live in a subfolder.
+Requirements on the host:
+
+- serve the files over http(s): opening `index.html` from disk (`file://`) does not
+  work, because browsers block `fetch` and JavaScript modules there;
+- serve `.js` files with a JavaScript MIME type (e.g. `text/javascript`), which
+  module scripts require; standard servers do this already;
+- ideally compress responses (gzip/brotli): the CSV files shrink from ~24 MB and
+  ~15 MB to ~6 MB and ~4 MB. GitHub Pages does this automatically.
+
+There are no external scripts, fonts or other third-party requests.
+
 ## Features
 
 - **RSD strength slider** α ∈ [0, 3], with α = 0 / α = 1 buttons and a 0↔1 animation.
