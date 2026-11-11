@@ -91,6 +91,8 @@ the absolute AB magnitude −2.5 log₁₀ L); `I_z` in km/s.
 | `js/selection.js` | Property-threshold and random subset selection |
 | `js/plot.js` | Scatter plot (points rasterised directly into an image buffer for speed), axes, zoom and pan |
 | `js/hist.js` | Histogram of the selected property |
+| `js/multipoles.js` | Power spectrum multipole panel and (α_h, α_s) interpolation |
+| `tools/make_mock_multipoles.py` | Writes a mock `multipoles.json` (documents the format) |
 | `js/main.js` | Application state and wiring of controls |
 
 ## Adding summary statistics
@@ -113,4 +115,37 @@ window.rsdApp.subscribe((event, snap) => {
 `rsdApp.setView(cy, cz, width)` centres the plot on (Y, Z_s) with the given width
 in Mpc/h, e.g. `rsdApp.setView(1080, 1180, 40)` for a rich cluster.
 
-The empty `<section id="stats-panels">` in `index.html` is reserved for such panels.
+## Power spectrum multipole panel
+
+The right-hand panel shows k P₀(k) and k P₂(k) of the **full 3D galaxy sample**
+(averaged over the three lines of sight), pre-computed on a grid of (α_h, α_s)
+and interpolated to the slider values with tensor-product natural cubic splines.
+Measurements are drawn as points, the first model as a solid line and the second
+model as a dashed line. Hovering shows the values at the nearest measured k.
+The y-axis is fixed to the range over the whole grid unless *Rescale y-axis* is
+ticked. The panel is hidden if `multipoles.json` is missing.
+
+`multipoles.json` format (k in h/Mpc, P in (Mpc/h)³, shot noise subtracted from P₀):
+
+```json
+{
+  "description": "caption shown under the panel",
+  "alpha_h": [0, 0.5, 1, 1.5, 2, 2.5, 3],
+  "alpha_s": [0, 0.5, 1, 1.5, 2, 2.5, 3],
+  "k": [ ...80 values... ],
+  "data":   { "label": "FLAMINGO", "P0": A, "P2": A },
+  "models": [ { "label": "Model 1", "k": [...optional...], "P0": A, "P2": A },
+              { "label": "Model 2", "k": [...optional...], "P0": A, "P2": A } ]
+}
+```
+
+`A[i_h][i_s][i_k]` is the multipole at `alpha_h[i_h]`, `alpha_s[i_s]`, `k[i_k]`
+(numpy: `P0.tolist()` for an array of shape `(n_h, n_s, n_k)`). The grids must be
+sorted but need not be uniform. A model without its own `k` uses the top-level `k`.
+To add another spectrum later (e.g. the galaxy–matter cross power spectrum), add
+its arrays under a new key and list that key in `SPECTRA` in `js/config.js`.
+
+The current `multipoles.json` is a **mock** made by `tools/make_mock_multipoles.py`
+(toy Kaiser + fingers-of-god model; `"mock": true` shows a warning badge). On that
+mock, cubic interpolation on the 7×7 grid reproduces the exact model at off-grid
+(α_h, α_s) to ≲0.5% of the peak k P₀ (bilinear: ≲1%).

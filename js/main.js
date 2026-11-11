@@ -1,4 +1,5 @@
-import { DATA_URL, DM_URL, COSMO, RSD_FACTOR, BOX_SIZE, COLS, OPT_COLS, COLORS, propMeta } from './config.js';
+import { MultipolePanel } from './multipoles.js';
+import { DATA_URL, DM_URL, MULTIPOLES_URL, SPECTRA, COSMO, RSD_FACTOR, BOX_SIZE, COLS, OPT_COLS, COLORS, propMeta } from './config.js';
 import { loadTable } from './data.js';
 import { Selector, G_BLUE, G_RED, G_NONE } from './selection.js';
 import { ScatterPlot } from './plot.js';
@@ -502,6 +503,40 @@ function setupControls() {
 }
 
 // ---------------------------------------------------------------------------
+// Power spectrum multipole panel (hidden if multipoles.json is not available)
+// ---------------------------------------------------------------------------
+async function setupMultipoles() {
+  let json;
+  try {
+    const resp = await fetch(MULTIPOLES_URL);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    json = await resp.json();
+  } catch (e) {
+    console.info(`No multipole panel: could not load ${MULTIPOLES_URL} (${e.message})`);
+    return;
+  }
+  $('stats').hidden = false;
+  $('show-pk-label').hidden = false;
+  const panel = new MultipolePanel({
+    canvas: $('pk-canvas'), tip: $('pk-tip'), legend: $('pk-legend'),
+    caption: $('pk-caption'), badge: $('pk-badge'), autoscale: $('pk-autoscale'),
+  }, SPECTRA);
+  try {
+    panel.update(state.aHalo, state.aSat);
+    panel.load(json);
+  } catch (e) {
+    $('pk-caption').textContent = `Could not read ${MULTIPOLES_URL}: ${e.message}`;
+    console.error(e);
+    return;
+  }
+  window.rsdApp.subscribe((event, snap) => {
+    if (event === 'rsd' || event === 'init') panel.update(snap.aHalo, snap.aSat);
+  });
+  $('show-pk').addEventListener('change', (e) => { $('stats').hidden = !e.target.checked; });
+  window.rsdApp.multipoles = panel;
+}
+
+// ---------------------------------------------------------------------------
 // Start-up
 // ---------------------------------------------------------------------------
 async function main() {
@@ -543,6 +578,7 @@ async function main() {
   plot.onHover = showTooltip;
 
   setupControls();
+  setupMultipoles();
   updateRSD();
   updateGroups();
   updateViewInfo();

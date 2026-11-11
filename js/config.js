@@ -4,6 +4,14 @@
 
 export const DATA_URL = 'galaxies.csv';
 export const DM_URL = 'particles.csv';   // dark matter particles: Y, Z, V_Z
+export const MULTIPOLES_URL = 'multipoles.json'; // pre-computed P_l on an (alpha_h, alpha_s) grid
+
+// Spectra shown in the multipole panel: key in multipoles.json, legend label, colour.
+// A galaxy-matter cross spectrum could be added here later (e.g. key 'P0_gm').
+export const SPECTRA = [
+  { key: 'P0', label: 'Monopole ℓ = 0', short: 'ℓ = 0', color: '#1b1b1b' },
+  { key: 'P2', label: 'Quadrupole ℓ = 2', short: 'ℓ = 2', color: '#d8590b' },
+];
 
 export const COSMO = {
   z: 0.8,
