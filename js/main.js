@@ -242,6 +242,21 @@ function histValues(name) {
 // ---------------------------------------------------------------------------
 // UI updates
 // ---------------------------------------------------------------------------
+// Number of galaxies and satellite fraction per group code (needs is_central)
+function satelliteStats(groups) {
+  if (!isCentral) return null;
+  const n = new Float64Array(4), sat = new Float64Array(4);
+  let nAll = 0, satAll = 0;
+  for (let i = 0; i < table.n; i++) {
+    const s = isCentral[i] !== 1 ? 1 : 0;
+    nAll++; satAll += s;
+    if (groups) { n[groups[i]]++; sat[groups[i]] += s; }
+  }
+  const f = (a, b) => (b > 0 ? a / b : NaN);
+  return { all: f(satAll, nAll), group: (g) => f(sat[g], n[g]) };
+}
+const fmtPct = (f) => (Number.isFinite(f) ? `${(100 * f).toFixed(1)}%` : '–');
+
 function updatePanels() {
   const mode = state.mode;
   $('panel-property').hidden = mode !== 'property';
@@ -260,9 +275,11 @@ function updatePanels() {
     lg.push(`<div><span class="swatch" style="background:${COLORS.dm}"></span> Dark matter particles (${fmtInt(dm.n)})</div>`);
   }
   if (mode === 'all') {
-    if (state.showGal) lg.push(`<div><span class="swatch" style="background:${COLORS.all}"></span> All galaxies (${fmtInt(table.n)})</div>`);
+    const st = satelliteStats(null);
+    const satTxt = st ? `; ${fmtPct(st.all)} satellites` : '';
+    if (state.showGal) lg.push(`<div><span class="swatch" style="background:${COLORS.all}"></span> All galaxies (${fmtInt(table.n)}${satTxt})</div>`);
     legend.innerHTML = lg.join('');
-    counts.innerHTML = `<b>${fmtInt(table.n)}</b> galaxies.`;
+    counts.innerHTML = `<b>${fmtInt(table.n)}</b> galaxies` + (st ? `, ${fmtPct(st.all)} satellites.` : '.');
     return;
   }
 
@@ -302,15 +319,21 @@ function updatePanels() {
     highName = `Random subset B (${state.fB}%)`;
     $('seed').textContent = state.seed;
   }
+  // satellite fractions of the subsets (not for the centrals/satellites mode itself)
+  const st = mode === 'central' ? null : satelliteStats(s.groups);
+  const sat = (g) => (st ? `; ${fmtPct(st.group(g))} satellites` : '');
   if (!state.showGal) { legend.innerHTML = lg.join(''); }
   else {
-  if (state.showLow) lg.push(`<div><span class="swatch" style="background:${c.low}"></span> ${lowName} (${fmtInt(s.nBlue)})</div>`);
-  if (state.showHigh) lg.push(`<div><span class="swatch" style="background:${c.high}"></span> ${highName} (${fmtInt(s.nRed)})</div>`);
-  if (state.showRest) lg.push(`<div><span class="swatch" style="background:${COLORS.rest}"></span> Others (${fmtInt(rest)})</div>`);
+  if (state.showLow) lg.push(`<div><span class="swatch" style="background:${c.low}"></span> ${lowName} (${fmtInt(s.nBlue)}${sat(G_BLUE)})</div>`);
+  if (state.showHigh) lg.push(`<div><span class="swatch" style="background:${c.high}"></span> ${highName} (${fmtInt(s.nRed)}${sat(G_RED)})</div>`);
+  if (state.showRest && rest > 0) lg.push(`<div><span class="swatch" style="background:${COLORS.rest}"></span> Others (${fmtInt(rest)}${sat(G_NONE)})</div>`);
   legend.innerHTML = lg.join('');
   }
   counts.innerHTML = `<b>${fmtInt(s.nBlue)}</b> + <b>${fmtInt(s.nRed)}</b> galaxies in subsets, ${fmtInt(rest)} others` +
-    (s.nExcluded ? `, ${fmtInt(s.nExcluded)} undefined` : '') + '.';
+    (s.nExcluded ? `, ${fmtInt(s.nExcluded)} undefined` : '') + '.' +
+    (st ? `<br>Satellite fraction: <span class="swatch" style="background:${c.low}"></span> <b>${fmtPct(st.group(G_BLUE))}</b> ` +
+      `<span class="swatch" style="background:${c.high}"></span> <b>${fmtPct(st.group(G_RED))}</b>` +
+      (rest > 0 ? ` · others ${fmtPct(st.group(G_NONE))}` : '') + ` · all galaxies ${fmtPct(st.all)}` : '');
 }
 
 function orderAt(s, which) {
