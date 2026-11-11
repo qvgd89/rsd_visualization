@@ -22,7 +22,7 @@ export const PK_PLOT = {
 export const PK_PARAMS = [
   // {model} in the note is replaced by the label of `model` in multipoles.json
   { key: 'A_over_f', label: 'A/f', model: 'mu_bias',
-    desc: 'absolute A/f: zero point set by the dark matter distribution (not ΔA/f between galaxy subsets)',
+    desc: 'A/f: zero point set by the dark matter distribution',
     note: '{model} model, fitted on 0.02 < k < 0.08 h/Mpc' },
 ];
 
