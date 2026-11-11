@@ -23,9 +23,20 @@ export const PK_PARAMS = [
   { key: 'A_over_f', label: 'A/f', note: 'mu_bias model, fitted on 0.02 < k < 0.08 h/Mpc' },
 ];
 
+// Styles in the multipole panel. Models are matched by their key in multipoles.json
+// ("models": {"mu_bias": ...}); models with other names use `fallback` in order.
+export const PK_STYLES = {
+  data: { color: '#111111' },
+  models: {
+    mu_bias: { color: '#7b3294', dash: [] },
+    bias: { color: '#8c8c8c', dash: [7, 5] },
+  },
+  fallback: [{ color: '#7b3294', dash: [] }, { color: '#8c8c8c', dash: [7, 5] }],
+};
+
 export const SPECTRA = [
-  { key: 'P0', label: 'Monopole ℓ = 0', short: 'ℓ = 0', color: '#1b1b1b' },
-  { key: 'P2', label: 'Quadrupole ℓ = 2', short: 'ℓ = 2', color: '#d8590b' },
+  { key: 'P0', label: 'Monopole', short: 'ℓ = 0', ylabel: 'k P₀(k)  [(Mpc/h)²]' },
+  { key: 'P2', label: 'Quadrupole', short: 'ℓ = 2', ylabel: 'k P₂(k)  [(Mpc/h)²]' },
 ];
 
 export const COSMO = {

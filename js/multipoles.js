@@ -9,7 +9,7 @@
 import { niceTicks } from './plot.js';
 
 const MARGIN = { left: 62, right: 12, top: 10, bottom: 42 };
-const MODEL_DASH = [[], [7, 5]];  // solid, dashed
+const GAP = 34;  // vertical space between stacked subplots (holds the upper x tick labels)
 
 // ---------------------------------------------------------------------------
 // Interpolation
@@ -145,8 +145,8 @@ function interpolate(flat, wh, ws, nk) {
 // Panel
 // ---------------------------------------------------------------------------
 export class MultipolePanel {
-  // spectra: [{ key: 'P0', label: 'ℓ = 0', color }, ...]
-  // opts: { kRange: [k0, k1], shadeAbove, shadeLabel, params: [{ key, label, note }] }
+  // spectra: [{ key: 'P0', label: 'Monopole', short: 'ℓ = 0', ylabel }, ...], one subplot each
+  // opts: { kRange: [k0, k1], shadeAbove, shadeLabel, params: [{ key, label, note }], styles }
   constructor(els, spectra, opts = {}) {
     this.els = els;               // { canvas, tip, legend, caption, badge, autoscale, params }
     this.spectra = spectra;
@@ -181,18 +181,29 @@ export class MultipolePanel {
     let models = json.models || [];
     if (!Array.isArray(models)) {
       if (typeof models !== 'object') throw new Error('"models" must be a list or an object');
-      models = Object.entries(models).map(([name, m]) => ({ label: name, ...m }));
+      models = Object.entries(models).map(([name, m]) => ({ label: name, ...m, name }));
     }
-    models.slice(0, 2).forEach((m, i) => this.series.push(mk(m, m.k || k, 'model', i)));
+    models.slice(0, 2).forEach((m, i) => {
+      const s = mk(m, m.k || k, 'model', i);
+      s.name = m.name;
+      this.series.push(s);
+    });
+    const st = this.opts.styles || {};
+    for (const s of this.series) {
+      s.style = s.kind === 'data'
+        ? { color: '#111', ...(st.data || {}) }
+        : { color: '#555', dash: [], ...((st.models || {})[s.name] || (st.fallback || [])[s.idx] || {}) };
+    }
     this.present = this.spectra.filter((sp) => this.series.some((s) => s.flat[sp.key]));
 
     // k range of the plot, and a fixed y range covering every grid point within it
     let kmax = 0;
     for (const s of this.series) kmax = Math.max(kmax, s.k[s.nk - 1]);
     this.kRange = this.opts.kRange || [0, kmax * 1.02];
-    let ymin = 0, ymax = 0;
-    for (const s of this.series) {
-      for (const sp of this.present) {
+    this.fixedY = {};
+    for (const sp of this.present) {
+      let ymin = 0, ymax = 0;
+      for (const s of this.series) {
         const f = s.flat[sp.key];
         if (!f) continue;
         for (let t = 0; t < f.length; t++) {
@@ -204,8 +215,8 @@ export class MultipolePanel {
           if (v > ymax) ymax = v;
         }
       }
+      this.fixedY[sp.key] = [ymin, ymax];
     }
-    this.fixedY = [ymin, ymax];
 
     // fitted parameters on the grid
     this.params = [];
@@ -260,16 +271,13 @@ export class MultipolePanel {
   }
 
   _legend() {
-    const parts = [];
-    for (const sp of this.present) {
-      parts.push(`<span class="lg-item"><span class="lg-line" style="border-color:${sp.color}"></span>${sp.label}</span>`);
-    }
-    const styles = [];
-    for (const s of this.series) {
-      if (s.kind === 'data') styles.push(`<span class="lg-item"><span class="lg-dot"></span>${escapeHtml(s.label)}</span>`);
-      else styles.push(`<span class="lg-item"><span class="lg-line ${s.idx === 1 ? 'dashed' : ''}"></span>${escapeHtml(s.label)}</span>`);
-    }
-    this.els.legend.innerHTML = `<div>${parts.join('')}</div><div>${styles.join('')}</div>`;
+    const items = this.series.map((s) => {
+      const mark = s.kind === 'data'
+        ? `<span class="lg-dot" style="background:${s.style.color}"></span>`
+        : `<span class="lg-line ${s.style.dash && s.style.dash.length ? 'dashed' : ''}" style="border-color:${s.style.color}"></span>`;
+      return `<span class="lg-item">${mark}${escapeHtml(s.label)}</span>`;
+    });
+    this.els.legend.innerHTML = `<div>${items.join('')}</div>`;
   }
 
   request() {
@@ -278,35 +286,36 @@ export class MultipolePanel {
     requestAnimationFrame(() => { this._dirty = false; this.draw(); });
   }
 
+  // Layout of the stacked subplots (one per spectrum), sharing the k axis
   _geometry() {
     const cv = this.els.canvas, parent = cv.parentElement;
     const w = parent.clientWidth, h = parent.clientHeight;
+    const n = Math.max(1, this.present ? this.present.length : 1);
     const pw = Math.max(10, w - MARGIN.left - MARGIN.right);
-    const ph = Math.max(10, h - MARGIN.top - MARGIN.bottom);
-    let [y0, y1] = this.fixedY;
-    if (this.els.autoscale.checked && this.curves) {
-      y0 = 0; y1 = 0;
-      this.series.forEach((s, si) => {
-        for (const sp of this.present) {
+    const ph = Math.max(10, (h - MARGIN.top - MARGIN.bottom - GAP * (n - 1)) / n);
+    const [x0, x1] = this.kRange || [0, 1];
+    const sx = (k) => MARGIN.left + ((k - x0) / (x1 - x0)) * pw;
+    const subs = (this.present || []).map((sp, i) => {
+      let [y0, y1] = this.fixedY[sp.key];
+      if (this.els.autoscale.checked && this.curves) {
+        y0 = 0; y1 = 0;
+        this.series.forEach((s, si) => {
           const c = this.curves[si][sp.key];
-          if (!c) continue;
+          if (!c) return;
           for (let q = 0; q < s.nk; q++) {
-            if (s.k[q] < this.kRange[0] || s.k[q] > this.kRange[1]) continue;
+            if (s.k[q] < x0 || s.k[q] > x1) continue;
             const v = s.k[q] * c[q];
             if (!Number.isFinite(v)) continue;
             if (v < y0) y0 = v; if (v > y1) y1 = v;
           }
-        }
-      });
-    }
-    const pad = 0.05 * (y1 - y0 || 1);
-    y0 -= pad; y1 += pad;
-    const [x0, x1] = this.kRange;
-    return {
-      w, h, pw, ph, x0, x1, y0, y1,
-      sx: (k) => MARGIN.left + ((k - x0) / (x1 - x0)) * pw,
-      sy: (v) => MARGIN.top + ph - ((v - y0) / (y1 - y0)) * ph,
-    };
+        });
+      }
+      const pad = 0.06 * (y1 - y0 || 1);
+      y0 -= pad; y1 += pad;
+      const top = MARGIN.top + i * (ph + GAP);
+      return { sp, top, y0, y1, sy: (v) => top + ph - ((v - y0) / (y1 - y0)) * ph };
+    });
+    return { w, h, pw, ph, x0, x1, sx, subs };
   }
 
   draw() {
@@ -317,104 +326,113 @@ export class MultipolePanel {
     cv.style.width = g.w + 'px'; cv.style.height = g.h + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, g.w, g.h);
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(MARGIN.left, MARGIN.top, g.pw, g.ph);
     if (!this.curves) return;
-
-    // grid lines and axes
     const xt = niceTicks(g.x0, g.x1, Math.max(3, Math.floor(g.pw / 70)));
-    const yt = niceTicks(g.y0, g.y1, Math.max(3, Math.floor(g.ph / 50)));
+    g.subs.forEach((sub, i) => this._drawSub(ctx, g, sub, xt, i === 0, i === g.subs.length - 1));
+  }
+
+  _drawSub(ctx, g, sub, xt, isTop, isBottom) {
+    const { sp, top } = sub, ph = g.ph, L = MARGIN.left, pw = g.pw;
+    const font = (px) => `${px}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(L, top, pw, ph);
+
+    // grid lines and zero line
+    const yt = niceTicks(sub.y0, sub.y1, Math.max(3, Math.floor(ph / 45)));
     ctx.strokeStyle = '#eee'; ctx.lineWidth = 1;
-    for (const t of yt.ticks) { const y = Math.round(g.sy(t)) + 0.5; ctx.beginPath(); ctx.moveTo(MARGIN.left, y); ctx.lineTo(MARGIN.left + g.pw, y); ctx.stroke(); }
-    if (g.y0 < 0 && g.y1 > 0) {
+    for (const t of yt.ticks) { const y = Math.round(sub.sy(t)) + 0.5; ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(L + pw, y); ctx.stroke(); }
+    if (sub.y0 < 0 && sub.y1 > 0) {
       ctx.strokeStyle = '#999';
-      const y = Math.round(g.sy(0)) + 0.5;
-      ctx.beginPath(); ctx.moveTo(MARGIN.left, y); ctx.lineTo(MARGIN.left + g.pw, y); ctx.stroke();
+      const y = Math.round(sub.sy(0)) + 0.5;
+      ctx.beginPath(); ctx.moveTo(L, y); ctx.lineTo(L + pw, y); ctx.stroke();
     }
 
     ctx.save();
-    ctx.beginPath(); ctx.rect(MARGIN.left, MARGIN.top, g.pw, g.ph); ctx.clip();
-    // models (lines) first, then data points on top
+    ctx.beginPath(); ctx.rect(L, top, pw, ph); ctx.clip();
+    // models (lines) first, then data points on top; the later (dashed) model is
+    // drawn over the earlier (solid) one so both stay visible where they coincide
     this.series.forEach((s, si) => {
       if (s.kind !== 'model') return;
-      for (const sp of this.present) {
-        const c = this.curves[si][sp.key];
-        if (!c) continue;
-        ctx.strokeStyle = sp.color; ctx.lineWidth = 2; ctx.setLineDash(MODEL_DASH[s.idx] || []);
-        ctx.beginPath();
-        let pen = false;
-        for (let q = 0; q < s.nk; q++) {
-          const v = s.k[q] * c[q];
-          if (!Number.isFinite(v)) { pen = false; continue; }
-          const x = g.sx(s.k[q]), y = g.sy(v);
-          if (pen) ctx.lineTo(x, y); else ctx.moveTo(x, y);
-          pen = true;
-        }
-        ctx.stroke();
+      const c = this.curves[si][sp.key];
+      if (!c) return;
+      ctx.strokeStyle = s.style.color; ctx.lineWidth = 2; ctx.setLineDash(s.style.dash || []);
+      ctx.beginPath();
+      let pen = false;
+      for (let q = 0; q < s.nk; q++) {
+        const v = s.k[q] * c[q];
+        if (!Number.isFinite(v)) { pen = false; continue; }
+        const x = g.sx(s.k[q]), y = sub.sy(v);
+        if (pen) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+        pen = true;
       }
+      ctx.stroke();
     });
     ctx.setLineDash([]);
     this.series.forEach((s, si) => {
       if (s.kind !== 'data') return;
-      for (const sp of this.present) {
-        const c = this.curves[si][sp.key];
-        if (!c) continue;
-        ctx.fillStyle = sp.color; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
-        for (let q = 0; q < s.nk; q++) {
-          const v = s.k[q] * c[q];
-          if (!Number.isFinite(v)) continue;
-          ctx.beginPath();
-          ctx.arc(g.sx(s.k[q]), g.sy(v), 2.6, 0, 2 * Math.PI);
-          ctx.fill(); ctx.stroke();
-        }
+      const c = this.curves[si][sp.key];
+      if (!c) return;
+      ctx.fillStyle = s.style.color; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+      for (let q = 0; q < s.nk; q++) {
+        const v = s.k[q] * c[q];
+        if (!Number.isFinite(v)) continue;
+        ctx.beginPath();
+        ctx.arc(g.sx(s.k[q]), sub.sy(v), 2.6, 0, 2 * Math.PI);
+        ctx.fill(); ctx.stroke();
       }
     });
     // grey out the k range not used in the model fits
     const ks = this.opts.shadeAbove;
     if (ks !== undefined && ks < g.x1) {
-      const xs = Math.max(MARGIN.left, g.sx(ks));
+      const xs = Math.max(L, g.sx(ks));
       ctx.fillStyle = 'rgba(232, 232, 232, 0.72)';
-      ctx.fillRect(xs, MARGIN.top, MARGIN.left + g.pw - xs, g.ph);
+      ctx.fillRect(xs, top, L + pw - xs, ph);
       ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
-      ctx.beginPath(); ctx.moveTo(Math.round(xs) + 0.5, MARGIN.top); ctx.lineTo(Math.round(xs) + 0.5, MARGIN.top + g.ph); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(Math.round(xs) + 0.5, top); ctx.lineTo(Math.round(xs) + 0.5, top + ph); ctx.stroke();
       ctx.setLineDash([]);
-      if (this.opts.shadeLabel) {
-        ctx.fillStyle = '#666'; ctx.font = '11.5px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+      if (this.opts.shadeLabel && isTop) {
+        ctx.fillStyle = '#666'; ctx.font = font(11.5);
         ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-        ctx.fillText(this.opts.shadeLabel, (xs + MARGIN.left + g.pw) / 2, MARGIN.top + 6);
+        ctx.fillText(this.opts.shadeLabel, (xs + L + pw) / 2, top + 6);
       }
     }
     // hover crosshair
     if (this.hoverK >= 0) {
       const x = Math.round(g.sx(this.hoverK)) + 0.5;
       ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x, MARGIN.top); ctx.lineTo(x, MARGIN.top + g.ph); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, top + ph); ctx.stroke();
     }
+    // subplot title
+    ctx.fillStyle = '#333'; ctx.font = font(12);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText(sp.label, L + 7, top + 6);
     ctx.restore();
 
-    // axes and labels
+    // frame, ticks and labels
     ctx.strokeStyle = '#555'; ctx.lineWidth = 1;
-    ctx.strokeRect(MARGIN.left + 0.5, MARGIN.top + 0.5, g.pw - 1, g.ph - 1);
-    ctx.fillStyle = '#333';
-    ctx.font = '11.5px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    ctx.strokeRect(L + 0.5, top + 0.5, pw - 1, ph - 1);
+    ctx.fillStyle = '#333'; ctx.font = font(11.5);
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     for (const t of xt.ticks) {
       const x = g.sx(t);
-      ctx.beginPath(); ctx.moveTo(x, MARGIN.top + g.ph); ctx.lineTo(x, MARGIN.top + g.ph + 4); ctx.stroke();
-      ctx.fillText(fmtTick(t, xt.step), x, MARGIN.top + g.ph + 6);
+      ctx.beginPath(); ctx.moveTo(x, top + ph); ctx.lineTo(x, top + ph + 4); ctx.stroke();
+      ctx.fillText(fmtTick(t, xt.step), x, top + ph + 6);
     }
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     for (const t of yt.ticks) {
-      const y = g.sy(t);
-      ctx.beginPath(); ctx.moveTo(MARGIN.left - 4, y); ctx.lineTo(MARGIN.left, y); ctx.stroke();
-      ctx.fillText(fmtTick(t, yt.step), MARGIN.left - 6, y);
+      const y = sub.sy(t);
+      ctx.beginPath(); ctx.moveTo(L - 4, y); ctx.lineTo(L, y); ctx.stroke();
+      ctx.fillText(fmtTick(t, yt.step), L - 6, y);
     }
-    ctx.font = '12.5px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-    ctx.fillText('k  [h/Mpc]', MARGIN.left + g.pw / 2, g.h - 3);
+    ctx.font = font(12.5);
+    if (isBottom) {
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillText('k  [h/Mpc]', L + pw / 2, g.h - 3);
+    }
     ctx.save();
-    ctx.translate(13, MARGIN.top + g.ph / 2); ctx.rotate(-Math.PI / 2); ctx.textBaseline = 'middle';
-    ctx.fillText('k Pₗ(k)  [(Mpc/h)²]', 0, 0);
+    ctx.translate(13, top + ph / 2); ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(sp.ylabel || sp.label, 0, 0);
     ctx.restore();
   }
 
@@ -425,7 +443,8 @@ export class MultipolePanel {
       const r = cv.getBoundingClientRect();
       const px = e.clientX - r.left, py = e.clientY - r.top;
       const g = this._geometry();
-      if (px < MARGIN.left || px > MARGIN.left + g.pw || py < MARGIN.top || py > MARGIN.top + g.ph) { this._hideTip(); return; }
+      const inSub = g.subs.some((sub) => py >= sub.top && py <= sub.top + g.ph);
+      if (px < MARGIN.left || px > MARGIN.left + g.pw || !inSub) { this._hideTip(); return; }
       const kx = g.x0 + ((px - MARGIN.left) / g.pw) * (g.x1 - g.x0);
       // snap to the nearest measured k (or the first series if there is no data)
       const ref = this.series[0];
@@ -436,16 +455,18 @@ export class MultipolePanel {
       }
       const k = ref.k[q];
       this.hoverK = k;
-      const rows = [`<tr><th>k = ${k.toFixed(3)}</th>${this.present.map((sp) => `<th style="color:${sp.color}">${sp.short || sp.label}</th>`).join('')}</tr>`];
+      const rows = [`<tr><th>k = ${k.toFixed(3)}</th>${this.present.map((sp) => `<th>${sp.short || sp.label}</th>`).join('')}</tr>`];
       this.series.forEach((s, si) => {
-        const name = s.kind === 'data' ? '● data' : (s.idx === 1 ? '- - model 2' : '— model 1');
+        const mark = s.kind === 'data'
+          ? `<span class="lg-dot" style="background:${s.style.color}"></span>`
+          : `<span class="lg-line ${s.style.dash && s.style.dash.length ? 'dashed' : ''}" style="border-color:${s.style.color}; width:16px"></span>`;
         const cells = this.present.map((sp) => {
           const c = this.curves[si][sp.key];
           if (!c) return '<td>–</td>';
           const v = k * valueAt(s, c, k);
           return `<td class="num">${Number.isFinite(v) ? v.toFixed(1) : '–'}</td>`;
         });
-        rows.push(`<tr><td title="${escapeHtml(s.label)}">${name}</td>${cells.join('')}</tr>`);
+        rows.push(`<tr><td>${mark} ${escapeHtml(s.label)}</td>${cells.join('')}</tr>`);
       });
       tip.innerHTML = `<table>${rows.join('')}</table><div class="tip-note">k in h/Mpc, k Pₗ in (Mpc/h)²</div>`;
       tip.hidden = false;

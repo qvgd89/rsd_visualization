@@ -1,5 +1,5 @@
 import { MultipolePanel, parseJsonLenient } from './multipoles.js';
-import { DATA_URL, DM_URL, MULTIPOLES_URL, SPECTRA, PK_PLOT, PK_PARAMS, COSMO, RSD_FACTOR, BOX_SIZE, COLS, OPT_COLS, COLORS, propMeta } from './config.js';
+import { DATA_URL, DM_URL, MULTIPOLES_URL, SPECTRA, PK_PLOT, PK_PARAMS, PK_STYLES, COSMO, RSD_FACTOR, BOX_SIZE, COLS, OPT_COLS, COLORS, propMeta } from './config.js';
 import { loadTable } from './data.js';
 import { Selector, G_BLUE, G_RED, G_NONE } from './selection.js';
 import { ScatterPlot } from './plot.js';
@@ -520,7 +520,7 @@ async function setupMultipoles() {
   const panel = new MultipolePanel({
     canvas: $('pk-canvas'), tip: $('pk-tip'), legend: $('pk-legend'),
     caption: $('pk-caption'), badge: $('pk-badge'), autoscale: $('pk-autoscale'), params: $('pk-params'),
-  }, SPECTRA, { ...PK_PLOT, params: PK_PARAMS });
+  }, SPECTRA, { ...PK_PLOT, params: PK_PARAMS, styles: PK_STYLES });
   try {
     panel.update(state.aHalo, state.aSat);
     panel.load(json);

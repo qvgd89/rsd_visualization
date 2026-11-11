@@ -120,8 +120,10 @@ in Mpc/h, e.g. `rsdApp.setView(1080, 1180, 40)` for a rich cluster.
 The right-hand panel shows k P₀(k) and k P₂(k) of the **full 3D galaxy sample**
 (averaged over the three lines of sight), pre-computed on a grid of (α_h, α_s)
 and interpolated to the slider values with tensor-product natural cubic splines.
-Measurements are drawn as points, the first model as a solid line and the second
-model as a dashed line. Hovering shows the values at the nearest measured k.
+The monopole and quadrupole are shown in separate panels sharing the k axis.
+Measurements are drawn as black points; the `mu_bias` model as a solid purple line
+and the `bias` model as a grey dashed line (styles in `PK_STYLES` in
+`js/config.js`; models with other names use the fallback styles in file order). Hovering shows the values at the nearest measured k.
 The y-axis is fixed to the range over the whole grid unless *Rescale y-axis* is
 ticked. The panel is hidden if `multipoles.json` is missing.
 
