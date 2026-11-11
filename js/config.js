@@ -10,8 +10,10 @@ export const MULTIPOLES_URL = 'multipoles.json'; // pre-computed P_l on an (alph
 // name in galaxies.csv. Each file holds {"low": ..., "high": ...} (and optionally the
 // same alpha_h, alpha_s, k grid as multipoles.json); it is loaded when first needed.
 // Paths are relative to MULTIPOLES_URL. Splits given inside multipoles.json take precedence.
+// `button` is the name of the split on the panel's view buttons.
 export const PK_SPLIT_FILES = {
-  'r-z': 'multipoles_r-z.json',
+  'r-z': { file: 'multipoles_r-z.json', button: 'Colour split' },
+  sigma_V: { file: 'multipoles_sigma_V.json', button: 'σ_V split' },
 };
 
 // Spectra shown in the multipole panel: key in multipoles.json, legend label, colour.

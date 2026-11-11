@@ -175,6 +175,12 @@ label.small { font-size: 12.5px; }
 .param-break { flex-basis: 100%; height: 0; }
 .param-note.dark { color: var(--ink); }
 .tip td.grp { font-weight: 600; padding-top: 3px; }
-#pk-split-note button { font-size: 12px; padding: 1px 7px; margin-left: 2px; }
 .param-err { font-weight: 400; font-size: 13px; color: var(--ink-2); }
 .param-pair + .param-pair { margin-left: 6px; }
+
+/* segmented view buttons in the multipole panel */
+.seg { display: flex; flex-wrap: wrap; margin: 4px 0 2px; }
+.seg button { border-radius: 0; margin-left: -1px; font-size: 12.5px; padding: 3px 10px; }
+.seg button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+.seg button:last-child { border-radius: 0 4px 4px 0; }
+.seg button.active { position: relative; z-index: 1; }

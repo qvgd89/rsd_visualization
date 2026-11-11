@@ -539,7 +539,11 @@ async function setupMultipoles() {
   try {
     panel.update(state.aHalo, state.aSat);
     // split files registered in config.js (only for the default multipoles file)
-    if (url === MULTIPOLES_URL) json.splits = { ...PK_SPLIT_FILES, ...(json.splits || {}) };
+    if (url === MULTIPOLES_URL) {
+      const files = {};
+      for (const [prop, v] of Object.entries(PK_SPLIT_FILES)) files[prop] = typeof v === 'string' ? v : v.file;
+      json.splits = { ...files, ...(json.splits || {}) };
+    }
     panel.load(json, url);
   } catch (e) {
     $('pk-caption').textContent = `Could not read ${url}: ${e.message}`;
@@ -556,12 +560,23 @@ async function setupMultipoles() {
     const cols = { low: c.low, high: c.high };
     const key = `${want}|${cols.low}|${cols.high}`;
     if (key !== syncSplit.last) { syncSplit.last = key; panel.setSplit(want, cols); }
+    // view buttons: all galaxies and every split with multipoles
+    const bar = $('pk-views');
+    bar.hidden = !props.length;
+    if (!props.length) return;
+    const name = (p) => (PK_SPLIT_FILES[p] && PK_SPLIT_FILES[p].button) || `${propMeta(p).sym} split`;
+    const views = [{ prop: '', label: 'All galaxies' }, ...props.map((p) => ({ prop: p, label: name(p) }))];
+    bar.innerHTML = views.map((v) =>
+      `<button data-prop="${v.prop}" class="${(want || '') === v.prop ? 'active' : ''}" ` +
+      `title="${v.prop ? `50/50 split by ${propMeta(v.prop).full}` : 'All galaxies, no split'}">${v.label}</button>`).join('');
+    bar.querySelectorAll('button').forEach((b) => (b.onclick = () => {
+      if (b.dataset.prop) applyHalfSplit(b.dataset.prop);
+      else { state.mode = 'all'; document.querySelector('input[name=mode][value=all]').checked = true; updateGroups(); }
+    }));
+    // the galaxies are split, but there are no multipoles for that split
     const note = $('pk-split-note');
-    if (want || !props.length) { note.hidden = true; return; }
-    note.hidden = false;
-    note.innerHTML = 'Subset multipoles are available for a 50/50 split in ' +
-      props.map((p) => `<button data-prop="${p}">${propMeta(p).full}</button>`).join(' ');
-    note.querySelectorAll('button').forEach((b) => (b.onclick = () => applyHalfSplit(b.dataset.prop)));
+    note.hidden = want || state.mode === 'all';
+    note.textContent = 'No multipoles for the current galaxy subsets; showing all galaxies.';
   };
   window.rsdApp.subscribe((event, snap) => {
     if (event === 'rsd' || event === 'init') panel.update(snap.aHalo, snap.aSat);

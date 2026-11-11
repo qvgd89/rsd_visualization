@@ -203,14 +203,15 @@ like `A_over_f`); for split halves without one, `splitErr` in `PK_PARAMS`
 (currently 0.0143 for A/f) is used. No error is shown for ΔA/f.
 
 Subsets can also live in separate files (as for colour: `multipoles_r-z.json`),
-registered in `PK_SPLIT_FILES` in `js/config.js`, e.g.
-`{ 'r-z': 'multipoles_r-z.json', 'M_s': 'multipoles_M_s.json' }`. Each file holds
+registered in `PK_SPLIT_FILES` in `js/config.js` with the name used on the panel's
+view buttons, e.g. `'M_s': { file: 'multipoles_M_s.json', button: 'Stellar mass split' }`. Each file holds
 `{"low": ..., "high": ...}` and may repeat `alpha_h`, `alpha_s` and `k`, which must
 then match `multipoles.json`. A file is downloaded only when its split is selected.
 (A split can also be given inside `multipoles.json` as `"splits": {"r-z": {...}}` or
 `"splits": {"r-z": "multipoles_r-z.json"}`.)
 
-The panel follows the main view: when the galaxies are split by a property with
+Buttons at the top of the panel switch between *All galaxies* and each available
+split (they also switch the main view). The panel follows the main view: when the galaxies are split by a property with
 subset measurements at exactly 50/50, it shows the two halves (low in blue, high in
 red, following *Swap colours*; solid = `mu_bias`, dashed = `bias`), A/f for both
 halves and ΔA/f = A/f(high) − A/f(low). Otherwise it shows the full sample, with a
