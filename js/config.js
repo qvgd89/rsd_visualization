@@ -35,6 +35,12 @@ export const PK_STYLES = {
     bias: { color: '#8c8c8c', dash: [7, 5] },
   },
   fallback: [{ color: '#7b3294', dash: [] }, { color: '#8c8c8c', dash: [7, 5] }],
+  // Subset view: colours follow the galaxy subsets (low = blue, high = red, unless
+  // swapped); the line style tells the models apart.
+  splitDash: {
+    models: { mu_bias: [], bias: [7, 5] },
+    fallback: [[], [7, 5]],
+  },
 };
 
 export const SPECTRA = [

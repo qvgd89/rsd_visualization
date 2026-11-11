@@ -148,51 +148,134 @@ export class MultipolePanel {
   // spectra: [{ key: 'P0', label: 'Monopole', short: 'ℓ = 0', ylabel }, ...], one subplot each
   // opts: { kRange: [k0, k1], shadeAbove, shadeLabel, params: [{ key, label, note }], styles }
   constructor(els, spectra, opts = {}) {
-    this.els = els;               // { canvas, tip, legend, caption, badge, autoscale, params }
+    this.els = els;               // { canvas, tip, legend, caption, badge, autoscale, params, splitNote }
     this.spectra = spectra;
     this.opts = opts;
     this.ah = 1; this.as = 1;
     this.hoverK = -1;
+    this.splitKey = null;         // property whose 50/50 subsets are shown (null: full sample)
+    this.splitColors = { low: '#1f5fbf', high: '#d1342b' };
     this._dirty = false;
     new ResizeObserver(() => this.request()).observe(els.canvas.parentElement);
     els.autoscale.addEventListener('change', () => this.request());
     this._bindHover();
   }
 
-  load(json) {
+  // Parse the top-level file: grids, the full sample and the (optional) subset splits
+  load(json, baseUrl = '') {
     const ah = json.alpha_h, as = json.alpha_s, k = json.k;
     if (!ah || !as || !k) throw new Error('missing alpha_h, alpha_s or k');
-    const nh = ah.length, ns = as.length;
-    this.gridH = ah; this.gridS = as;
+    this.gridH = ah; this.gridS = as; this.kTop = k;
     this.json = json;
-    // series: data first, then the models
-    const mk = (src, kk, kind, idx) => {
+    this.baseUrl = baseUrl;
+    this.full = this._parseBlock(json, 'full', 'full sample');
+    this.splits = {};
+    for (const [prop, sp] of Object.entries(json.splits || {})) {
+      // a split is either given inline, or as the name of a separate JSON file
+      this.splits[prop] = typeof sp === 'string' ? { url: sp } : this._parseSplit(sp, prop);
+    }
+    this._activate();
+  }
+
+  _parseSplit(sp, prop) {
+    if (!sp.low || !sp.high) throw new Error(`splits.${prop}: needs "low" and "high"`);
+    return {
+      low: this._parseBlock(sp.low, 'low', `splits.${prop}.low`),
+      high: this._parseBlock(sp.high, 'high', `splits.${prop}.high`),
+      mock: !!sp.mock,
+    };
+  }
+
+  // One sample (full, or one half of a split): { label, series, params }
+  _parseBlock(src, group, what) {
+    const nh = this.gridH.length, ns = this.gridS.length;
+    const mk = (b, kk, kind, idx, name) => {
       const nk = kk.length;
-      const s = { label: src.label || (kind === 'data' ? 'Measurement' : `Model ${idx + 1}`), kind, idx, k: Float64Array.from(kk), nk, flat: {} };
+      const s = {
+        label: b.label || (kind === 'data' ? 'Measurement' : name || `Model ${idx + 1}`),
+        kind, idx, name, group, k: Float64Array.from(kk, Number), nk, flat: {},
+      };
       for (const sp of this.spectra) {
-        if (src[sp.key]) s.flat[sp.key] = flatten(src[sp.key], nh, ns, nk, `${kind}.${sp.key}`);
+        if (b[sp.key]) s.flat[sp.key] = flatten(b[sp.key], nh, ns, nk, `${what}.${kind}.${sp.key}`);
       }
       return s;
     };
-    this.series = [];
-    if (json.data) this.series.push(mk(json.data, k, 'data', 0));
+    const series = [];
+    if (src.data) series.push(mk(src.data, this.kTop, 'data', 0));
     // "models" may be a list of {label, ...} or an object keyed by model name
-    // (the key is then the label); the first model is drawn solid, the second dashed.
-    let models = json.models || [];
+    let models = src.models || [];
     if (!Array.isArray(models)) {
-      if (typeof models !== 'object') throw new Error('"models" must be a list or an object');
+      if (typeof models !== 'object') throw new Error(`${what}: "models" must be a list or an object`);
       models = Object.entries(models).map(([name, m]) => ({ label: name, ...m, name }));
     }
-    models.slice(0, 2).forEach((m, i) => {
-      const s = mk(m, m.k || k, 'model', i);
-      s.name = m.name;
-      this.series.push(s);
-    });
+    models.slice(0, 2).forEach((m, i) => series.push(mk(m, m.k || this.kTop, 'model', i, m.name)));
+
+    const params = [];
+    for (const p of this.opts.params || []) {
+      let v = src[p.key];
+      if (v === undefined) for (const m of models) if (m[p.key] !== undefined) { v = m[p.key]; break; }
+      if (v === undefined) continue;
+      let note = p.note;
+      if (note && note.includes('{model}')) {
+        const m = series.find((t) => t.kind === 'model' && t.name === p.model);
+        note = note.replace('{model}', m ? m.label : (p.model || ''));
+      }
+      params.push({ ...p, note, grid: paramGrid(v, nh, ns, `${what}.${p.key}`) });
+    }
+    return { label: src.label || (group === 'low' ? 'Low 50%' : group === 'high' ? 'High 50%' : ''), series, params };
+  }
+
+  // Properties with 50/50 subset measurements
+  splitProperties() {
+    return Object.keys(this.splits || {});
+  }
+
+  // Show the subsets of `prop` (or the full sample for null); colors: { low, high }
+  async setSplit(prop, colors) {
+    if (colors) this.splitColors = colors;
+    if (prop && !(prop in (this.splits || {}))) prop = null;
+    if (prop && this.splits[prop].url) {
+      const entry = this.splits[prop];
+      if (!entry.loading) {
+        entry.loading = fetch(new URL(entry.url, new URL(this.baseUrl || '.', location.href)))
+          .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); })
+          .then((t) => { this.splits[prop] = this._parseSplit(parseJsonLenient(t), prop); });
+      }
+      try { await entry.loading; } catch (e) {
+        this.els.caption.textContent = `Could not load subsets for ${prop}: ${e.message}`;
+        prop = null;
+      }
+    }
+    this.splitKey = prop;
+    this._activate();
+  }
+
+  // Set up the series, styles and axis ranges for the current view
+  _activate() {
+    if (!this.full) return;
     const st = this.opts.styles || {};
-    for (const s of this.series) {
-      s.style = s.kind === 'data'
-        ? { color: '#111', ...(st.data || {}) }
-        : { color: '#555', dash: [], ...((st.models || {})[s.name] || (st.fallback || [])[s.idx] || {}) };
+    const split = this.splitKey ? this.splits[this.splitKey] : null;
+    if (!split) {
+      this.series = this.full.series;
+      for (const s of this.series) {
+        s.style = s.kind === 'data'
+          ? { color: '#111', ...(st.data || {}) }
+          : { color: '#555', dash: [], ...((st.models || {})[s.name] || (st.fallback || [])[s.idx] || {}) };
+      }
+      this.groups = [];
+    } else {
+      this.series = [...split.low.series, ...split.high.series];
+      const dashes = st.splitDash || {};
+      for (const s of this.series) {
+        const color = this.splitColors[s.group];
+        s.style = s.kind === 'data'
+          ? { color }
+          : { color, dash: (dashes.models || {})[s.name] || (dashes.fallback || [[], [7, 5]])[s.idx] || [] };
+      }
+      this.groups = [
+        { key: 'low', label: split.low.label, color: this.splitColors.low },
+        { key: 'high', label: split.high.label, color: this.splitColors.high },
+      ];
     }
     this.present = this.spectra.filter((sp) => this.series.some((s) => s.flat[sp.key]));
 
@@ -217,23 +300,8 @@ export class MultipolePanel {
       }
       this.fixedY[sp.key] = [ymin, ymax];
     }
-
-    // fitted parameters on the grid
-    this.params = [];
-    for (const p of this.opts.params || []) {
-      let v = json[p.key];
-      if (v === undefined) for (const m of models) if (m[p.key] !== undefined) { v = m[p.key]; break; }
-      if (v === undefined) continue;
-      let note = p.note;
-      if (note && note.includes('{model}')) {
-        const m = this.series.find((s) => s.kind === 'model' && s.name === p.model);
-        note = note.replace('{model}', m ? m.label : (p.model || ''));
-      }
-      this.params.push({ ...p, note, grid: paramGrid(v, nh, ns, p.key) });
-    }
-
     this._legend();
-    this.els.badge.hidden = !json.mock;
+    this.els.badge.hidden = !(this.json.mock || (split && split.mock));
     this.update(this.ah, this.as);
   }
 
@@ -260,30 +328,51 @@ export class MultipolePanel {
   _showParams(ah, as) {
     const el = this.els.params;
     if (!el) return;
-    if (!this.params.length) { el.hidden = true; return; }
+    const split = this.splitKey ? this.splits[this.splitKey] : null;
+    const defs = (split ? split.low.params : this.full.params);
+    if (!defs.length) { el.hidden = true; return; }
     el.hidden = false;
-    el.innerHTML = this.params.map((p) => {
-      const v = interp2Masked(this.gridH, this.gridS, p.grid, ah, as);
-      let txt, title = '';
-      if (Number.isFinite(v)) txt = v.toFixed(3);
-      else if (v === Infinity) txt = '+∞';
-      else if (v === -Infinity) txt = '−∞';
-      else { txt = '—'; title = 'Not defined here: a neighbouring grid point is infinite or missing'; }
-      return `<div class="param" title="${title}"><span class="param-label">${escapeHtml(p.label)}</span>` +
-        `<span class="param-value">${txt}</span>` +
-        (p.desc ? `<span class="param-desc">${escapeHtml(p.desc)}</span>` : '') +
-        (p.note ? `<span class="param-note">${escapeHtml(p.note)}${title ? ' · ' + title.toLowerCase() : ''}</span>` : '') + '</div>';
+    const val = (p) => interp2Masked(this.gridH, this.gridS, p.grid, ah, as);
+    const undefTitle = 'Not defined here: a neighbouring grid point is infinite or missing';
+    const cell = (v) => `<span class="param-value" title="${Number.isNaN(v) ? undefTitle : ''}">${fmtParam(v)}</span>`;
+    el.innerHTML = defs.map((p) => {
+      let main;
+      if (!split) {
+        main = `<span class="param-label">${escapeHtml(p.label)}</span>${cell(val(p))}`;
+      } else {
+        const ph = split.high.params.find((q) => q.key === p.key);
+        const vl = val(p), vh = ph ? val(ph) : NaN;
+        const dot = (c) => `<span class="lg-dot" style="background:${c}"></span>`;
+        main = `<span class="param-label">${escapeHtml(p.label)}</span>` +
+          `<span class="param-pair">${dot(this.splitColors.low)}${cell(vl)}</span>` +
+          `<span class="param-pair">${dot(this.splitColors.high)}${cell(vh)}</span>` +
+          (p.desc ? `<span class="param-note dark">${escapeHtml(p.desc)}</span>` : '<span class="param-break"></span>') +
+          `<span class="param-label">Δ${escapeHtml(p.label)}</span>${cell(diffParam(vh, vl))}` +
+          `<span class="param-desc">${escapeHtml(split.high.label)} − ${escapeHtml(split.low.label)}</span>`;
+      }
+      return `<div class="param">${main}` +
+        (p.desc && !split ? `<span class="param-note dark">${escapeHtml(p.desc)}</span>` : '') +
+        (p.note ? `<span class="param-note">${escapeHtml(p.note)}</span>` : '') + '</div>';
     }).join('');
   }
 
   _legend() {
-    const items = this.series.map((s) => {
-      const mark = s.kind === 'data'
-        ? `<span class="lg-dot" style="background:${s.style.color}"></span>`
-        : `<span class="lg-line ${s.style.dash && s.style.dash.length ? 'dashed' : ''}" style="border-color:${s.style.color}"></span>`;
-      return `<span class="lg-item">${mark}${escapeHtml(s.label)}</span>`;
-    });
-    this.els.legend.innerHTML = `<div>${items.join('')}</div>`;
+    const lineMark = (s, color) =>
+      `<span class="lg-line ${s.style.dash && s.style.dash.length ? 'dashed' : ''}" style="border-color:${color}"></span>`;
+    let rows;
+    if (!this.groups.length) {
+      rows = [this.series.map((s) => `<span class="lg-item">${s.kind === 'data'
+        ? `<span class="lg-dot" style="background:${s.style.color}"></span>` : lineMark(s, s.style.color)}${escapeHtml(s.label)}</span>`).join('')];
+    } else {
+      // colour = subset, marker / line style = measurement / model
+      const groups = this.groups.map((g) => `<span class="lg-item"><span class="lg-dot" style="background:${g.color}"></span>${escapeHtml(g.label)}</span>`);
+      const kinds = [`<span class="lg-item"><span class="lg-dot" style="background:#555"></span>measurement</span>`];
+      for (const s of this.series) {
+        if (s.kind === 'model' && s.group === 'low') kinds.push(`<span class="lg-item">${lineMark(s, '#555')}${escapeHtml(s.label)}</span>`);
+      }
+      rows = [groups.join(''), kinds.join('')];
+    }
+    this.els.legend.innerHTML = rows.map((r) => `<div>${r}</div>`).join('');
   }
 
   request() {
@@ -458,7 +547,13 @@ export class MultipolePanel {
       const k = ref.k[q];
       this.hoverK = k;
       const rows = [`<tr><th>k = ${k.toFixed(3)}</th>${this.present.map((sp) => `<th>${sp.short || sp.label}</th>`).join('')}</tr>`];
+      let lastGroup = null;
       this.series.forEach((s, si) => {
+        if (this.groups.length && s.group !== lastGroup) {
+          const g = this.groups.find((x) => x.key === s.group);
+          rows.push(`<tr><td colspan="${1 + this.present.length}" class="grp" style="color:${g.color}">${escapeHtml(g.label)}</td></tr>`);
+          lastGroup = s.group;
+        }
         const mark = s.kind === 'data'
           ? `<span class="lg-dot" style="background:${s.style.color}"></span>`
           : `<span class="lg-line ${s.style.dash && s.style.dash.length ? 'dashed' : ''}" style="border-color:${s.style.color}; width:16px"></span>`;
@@ -468,7 +563,8 @@ export class MultipolePanel {
           const v = k * valueAt(s, c, k);
           return `<td class="num">${Number.isFinite(v) ? v.toFixed(1) : '–'}</td>`;
         });
-        rows.push(`<tr><td>${mark} ${escapeHtml(s.label)}</td>${cells.join('')}</tr>`);
+        const name = this.groups.length && s.kind === 'data' ? 'measurement' : s.label;
+        rows.push(`<tr><td>${mark} ${escapeHtml(name)}</td>${cells.join('')}</tr>`);
       });
       tip.innerHTML = `<table>${rows.join('')}</table><div class="tip-note">k in h/Mpc, k Pₗ in (Mpc/h)²</div>`;
       tip.hidden = false;
@@ -489,6 +585,22 @@ export class MultipolePanel {
     this.els.tip.hidden = true;
     if (this.hoverK >= 0) { this.hoverK = -1; this.request(); }
   }
+}
+
+function fmtParam(v) {
+  if (Number.isFinite(v)) return v.toFixed(3);
+  if (v === Infinity) return '+∞';
+  if (v === -Infinity) return '−∞';
+  return '—';
+}
+
+// a - b for parameter values that may be infinite or undefined (NaN)
+function diffParam(a, b) {
+  if (Number.isFinite(a) && Number.isFinite(b)) return a - b;
+  if (Number.isNaN(a) || Number.isNaN(b)) return NaN;
+  if (!Number.isFinite(a) && Number.isFinite(b)) return a;
+  if (Number.isFinite(a) && !Number.isFinite(b)) return -b;
+  return a === -b ? a : NaN; // inf - (-inf) = inf; inf - inf undefined
 }
 
 // Value of an interpolated curve at k (linear in k between the series' k values)

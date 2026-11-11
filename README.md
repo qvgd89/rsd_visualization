@@ -93,6 +93,7 @@ the absolute AB magnitude −2.5 log₁₀ L); `I_z` in km/s.
 | `js/hist.js` | Histogram of the selected property |
 | `js/multipoles.js` | Power spectrum multipole panel and (α_h, α_s) interpolation |
 | `tools/make_mock_multipoles.py` | Writes a mock `multipoles.json` (documents the format) |
+| `tools/make_mock_splits.py` | Adds mock 50/50 r − z subsets to the real file, for testing |
 | `js/main.js` | Application state and wiring of controls |
 
 ## Adding summary statistics
@@ -153,6 +154,40 @@ not strictly valid JSON). The cubic spline is used only over runs of finite grid
 values; exactly on an infinite grid point (or between two equal infinities) the
 infinity is shown, and next to an infinite or missing point the value is shown
 as "—", since nothing can be said there (e.g. 0 < α_h < 0.5, where A/f = −∞ at α_h = 0).
+
+### Galaxy subsets (50/50 property splits)
+
+Multipoles of the two halves of a 50/50 split can be added under `splits`, keyed by
+the property's column name in `galaxies.csv`. Each half has the same structure as
+the full sample and uses the same `alpha_h`, `alpha_s` and `k` grid:
+
+```json
+"splits": {
+  "r-z": {
+    "low":  { "label": "Bluest 50%",
+              "data":   { "P0": A, "P2": A },
+              "models": { "mu_bias": { "label": "bias + μ^2", "P0": A, "P2": A },
+                          "bias":    { "label": "bias only",  "P0": A, "P2": A } },
+              "A_over_f": [ ...49 values... ] },
+    "high": { "label": "Reddest 50%", ... }
+  }
+}
+```
+
+`low` / `high` are the galaxies below / above the median. A split may instead be
+given as the name of a separate JSON file containing `{"low": ..., "high": ...}`,
+which is then loaded only when needed.
+
+The panel follows the main view: when the galaxies are split by a property with
+subset measurements at exactly 50/50, it shows the two halves (low in blue, high in
+red, following *Swap colours*; solid = `mu_bias`, dashed = `bias`), A/f for both
+halves and ΔA/f = A/f(high) − A/f(low). Otherwise it shows the full sample, with a
+button to switch the main view to an available 50/50 split.
+
+`mock/multipoles_splits_mock.json` (made by `tools/make_mock_splits.py` from the
+real full-sample file) contains mock r − z subsets; preview it with
+`index.html?multipoles=mock/multipoles_splits_mock.json`. The `?multipoles=` URL
+parameter loads any other multipole file in the same way.
 
 `models` may also be an object keyed by model name, e.g.
 `"models": {"mu_bias": {...}, "bias": {...}}`; the key is then used as the label

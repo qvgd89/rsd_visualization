@@ -368,6 +368,7 @@ function linkSlider(rangeId, numId, onChange) {
   return (v) => { r.value = v; nIn.value = v; };
 }
 
+const ui = {};  // slider setters needed outside setupControls
 let animating = null;
 function stopAnimation() {
   if (animating) { cancelAnimationFrame(animating.raf); animating = null; $('animate').classList.remove('active'); $('animate').textContent = '▶ Animate 0↔1'; }
@@ -465,6 +466,7 @@ function setupControls() {
     return [setA, setB];
   };
   const [setPLow, setPHigh] = pair('pLow', 'pHigh', ['p-low', 'p-low-num'], ['p-high', 'p-high-num']);
+  ui.setPLow = setPLow; ui.setPHigh = setPHigh;
   $('split-half').onclick = () => {
     state.pLow = 50; state.pHigh = 50;
     setPLow(50); setPHigh(50);
@@ -505,14 +507,27 @@ function setupControls() {
 // ---------------------------------------------------------------------------
 // Power spectrum multipole panel (hidden if multipoles.json is not available)
 // ---------------------------------------------------------------------------
+// Switch the main view to a 50/50 split by `prop`
+function applyHalfSplit(prop) {
+  state.mode = 'property';
+  document.querySelector('input[name=mode][value=property]').checked = true;
+  state.prop = prop;
+  $('prop').value = prop;
+  state.pLow = 50; state.pHigh = 50;
+  ui.setPLow(50); ui.setPHigh(50);
+  updateGroups();
+}
+
 async function setupMultipoles() {
+  // ?multipoles=<file> loads a different file (e.g. a mock for testing)
+  const url = new URLSearchParams(location.search).get('multipoles') || MULTIPOLES_URL;
   let json;
   try {
-    const resp = await fetch(MULTIPOLES_URL);
+    const resp = await fetch(url);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     json = parseJsonLenient(await resp.text());
   } catch (e) {
-    console.info(`No multipole panel: could not load ${MULTIPOLES_URL} (${e.message})`);
+    console.info(`No multipole panel: could not load ${url} (${e.message})`);
     return;
   }
   $('stats').hidden = false;
@@ -523,14 +538,32 @@ async function setupMultipoles() {
   }, SPECTRA, { ...PK_PLOT, params: PK_PARAMS, styles: PK_STYLES });
   try {
     panel.update(state.aHalo, state.aSat);
-    panel.load(json);
+    panel.load(json, url);
   } catch (e) {
-    $('pk-caption').textContent = `Could not read ${MULTIPOLES_URL}: ${e.message}`;
+    $('pk-caption').textContent = `Could not read ${url}: ${e.message}`;
     console.error(e);
     return;
   }
+  // Show subset multipoles when the main view is a 50/50 split by a property that
+  // has them; otherwise show the full sample and offer the available splits.
+  const syncSplit = () => {
+    const props = panel.splitProperties();
+    const want = state.mode === 'property' && state.pLow === 50 && state.pHigh === 50 && props.includes(state.prop)
+      ? state.prop : null;
+    const c = colors();
+    const cols = { low: c.low, high: c.high };
+    const key = `${want}|${cols.low}|${cols.high}`;
+    if (key !== syncSplit.last) { syncSplit.last = key; panel.setSplit(want, cols); }
+    const note = $('pk-split-note');
+    if (want || !props.length) { note.hidden = true; return; }
+    note.hidden = false;
+    note.innerHTML = 'Subset multipoles are available for a 50/50 split in ' +
+      props.map((p) => `<button data-prop="${p}">${propMeta(p).full}</button>`).join(' ');
+    note.querySelectorAll('button').forEach((b) => (b.onclick = () => applyHalfSplit(b.dataset.prop)));
+  };
   window.rsdApp.subscribe((event, snap) => {
     if (event === 'rsd' || event === 'init') panel.update(snap.aHalo, snap.aSat);
+    if (event === 'groups' || event === 'init') syncSplit();
   });
   $('show-pk').addEventListener('change', (e) => { $('stats').hidden = !e.target.checked; });
   window.rsdApp.multipoles = panel;

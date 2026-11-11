@@ -170,3 +170,9 @@ label.small { font-size: 12.5px; }
 .param-value { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 4.5ch; }
 .param-desc { color: var(--ink); font-size: 12.5px; }
 .param-note { flex-basis: 100%; color: var(--ink-2); font-size: 12px; }
+
+.param-pair { display: inline-flex; align-items: center; gap: 4px; }
+.param-break { flex-basis: 100%; height: 0; }
+.param-note.dark { color: var(--ink); }
+.tip td.grp { font-weight: 600; padding-top: 3px; }
+#pk-split-note button { font-size: 12px; padding: 1px 7px; margin-left: 2px; }
