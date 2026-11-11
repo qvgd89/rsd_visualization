@@ -121,7 +121,14 @@ export class MultipolePanel {
     };
     this.series = [];
     if (json.data) this.series.push(mk(json.data, k, 'data', 0));
-    (json.models || []).slice(0, 2).forEach((m, i) => this.series.push(mk(m, m.k || k, 'model', i)));
+    // "models" may be a list of {label, ...} or an object keyed by model name
+    // (the key is then the label); the first model is drawn solid, the second dashed.
+    let models = json.models || [];
+    if (!Array.isArray(models)) {
+      if (typeof models !== 'object') throw new Error('"models" must be a list or an object');
+      models = Object.entries(models).map(([name, m]) => ({ label: name, ...m }));
+    }
+    models.slice(0, 2).forEach((m, i) => this.series.push(mk(m, m.k || k, 'model', i)));
     this.present = this.spectra.filter((sp) => this.series.some((s) => s.flat[sp.key]));
 
     // k range and a fixed y range covering every grid point

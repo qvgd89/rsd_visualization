@@ -139,6 +139,11 @@ ticked. The panel is hidden if `multipoles.json` is missing.
 }
 ```
 
+`models` may also be an object keyed by model name, e.g.
+`"models": {"mu_bias": {...}, "bias": {...}}`; the key is then used as the label
+(unless the entry has its own `"label"`) and the order in the file sets the line
+style (first solid, second dashed).
+
 `A[i_h][i_s][i_k]` is the multipole at `alpha_h[i_h]`, `alpha_s[i_s]`, `k[i_k]`
 (numpy: `P0.tolist()` for an array of shape `(n_h, n_s, n_k)`). The grids must be
 sorted but need not be uniform. A model without its own `k` uses the top-level `k`.
