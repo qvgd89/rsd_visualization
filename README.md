@@ -83,7 +83,7 @@ There are no external scripts, fonts or other third-party requests.
   - *Centrals vs satellites* (uses the `is_central` column).
   - Each subset, and the remaining galaxies (grey), can be toggled on and off; colours can be swapped.
   - The satellite fraction of each subset (from `is_central`, for the galaxies in the
-    slice) is shown in the plot legend and under the subset controls, and updates
+    slice) is shown under the subset controls in the sidebar, and updates
     with any threshold, property or random draw.
 - **Zoom/pan**: scroll or pinch to zoom, drag to pan, double-click to zoom in
   (shift+double-click out), shift+drag to zoom to a rectangle, *Reset view*.

@@ -276,8 +276,7 @@ function updatePanels() {
   }
   if (mode === 'all') {
     const st = satelliteStats(null);
-    const satTxt = st ? `; ${fmtPct(st.all)} satellites` : '';
-    if (state.showGal) lg.push(`<div><span class="swatch" style="background:${COLORS.all}"></span> All galaxies (${fmtInt(table.n)}${satTxt})</div>`);
+    if (state.showGal) lg.push(`<div><span class="swatch" style="background:${COLORS.all}"></span> All galaxies (${fmtInt(table.n)})</div>`);
     legend.innerHTML = lg.join('');
     counts.innerHTML = `<b>${fmtInt(table.n)}</b> galaxies` + (st ? `, ${fmtPct(st.all)} satellites.` : '.');
     return;
@@ -321,12 +320,11 @@ function updatePanels() {
   }
   // satellite fractions of the subsets (not for the centrals/satellites mode itself)
   const st = mode === 'central' ? null : satelliteStats(s.groups);
-  const sat = (g) => (st ? `; ${fmtPct(st.group(g))} satellites` : '');
   if (!state.showGal) { legend.innerHTML = lg.join(''); }
   else {
-  if (state.showLow) lg.push(`<div><span class="swatch" style="background:${c.low}"></span> ${lowName} (${fmtInt(s.nBlue)}${sat(G_BLUE)})</div>`);
-  if (state.showHigh) lg.push(`<div><span class="swatch" style="background:${c.high}"></span> ${highName} (${fmtInt(s.nRed)}${sat(G_RED)})</div>`);
-  if (state.showRest && rest > 0) lg.push(`<div><span class="swatch" style="background:${COLORS.rest}"></span> Others (${fmtInt(rest)}${sat(G_NONE)})</div>`);
+  if (state.showLow) lg.push(`<div><span class="swatch" style="background:${c.low}"></span> ${lowName} (${fmtInt(s.nBlue)})</div>`);
+  if (state.showHigh) lg.push(`<div><span class="swatch" style="background:${c.high}"></span> ${highName} (${fmtInt(s.nRed)})</div>`);
+  if (state.showRest && rest > 0) lg.push(`<div><span class="swatch" style="background:${COLORS.rest}"></span> Others (${fmtInt(rest)})</div>`);
   legend.innerHTML = lg.join('');
   }
   counts.innerHTML = `<b>${fmtInt(s.nBlue)}</b> + <b>${fmtInt(s.nRed)}</b> galaxies in subsets, ${fmtInt(rest)} others` +
