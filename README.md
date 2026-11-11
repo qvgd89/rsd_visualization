@@ -172,9 +172,8 @@ are given on the same grid, either nested `[i_h][i_s]` or flat with α_s varying
 fastest, and may contain `Infinity`, `-Infinity`, `NaN` or `null` (Python's
 `json.dump` writes the first three, which the page accepts even though they are
 not strictly valid JSON). The cubic spline is used only over runs of finite grid
-values; exactly on an infinite grid point (or between two equal infinities) the
-infinity is shown, and next to an infinite or missing point the value is shown
-as "—", since nothing can be said there (e.g. 0 < α_h < 0.5, where A/f = −∞ at α_h = 0).
+values; infinite values are never displayed: on or next to an infinite or missing grid
+point the value is shown as "—", since nothing can be said there (e.g. 0 < α_h < 0.5, where A/f = −∞ at α_h = 0).
 
 ### Galaxy subsets (50/50 property splits)
 

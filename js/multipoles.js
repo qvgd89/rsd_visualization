@@ -347,9 +347,9 @@ export class MultipolePanel {
     if (!defs.length) { el.hidden = true; return; }
     el.hidden = false;
     const val = (p) => interp2Masked(this.gridH, this.gridS, p.grid, ah, as);
-    const undefTitle = 'Not defined here: a neighbouring grid point is infinite or missing';
+    const undefTitle = 'Not available here: infinite or missing on the pre-computed grid';
     const errOf = (p) => (p.errGrid ? interp2Masked(this.gridH, this.gridS, p.errGrid, ah, as) : p.errConst);
-    const cell = (v, e) => `<span class="param-value" title="${Number.isNaN(v) ? undefTitle : ''}">${fmtParam(v)}` +
+    const cell = (v, e) => `<span class="param-value" title="${Number.isFinite(v) ? '' : undefTitle}">${fmtParam(v)}` +
       (Number.isFinite(v) && Number.isFinite(e) ? `<span class="param-err"> ± ${e.toFixed(3)}</span>` : '') + '</span>';
     el.innerHTML = defs.map((p) => {
       let main;
@@ -603,11 +603,10 @@ export class MultipolePanel {
   }
 }
 
+// Infinite values (e.g. A/f at alpha_h = 0) are never displayed; like undefined
+// values they are shown as a dash.
 function fmtParam(v) {
-  if (Number.isFinite(v)) return v.toFixed(3);
-  if (v === Infinity) return '+∞';
-  if (v === -Infinity) return '−∞';
-  return '—';
+  return Number.isFinite(v) ? v.toFixed(3) : '—';
 }
 
 // a - b for parameter values that may be infinite or undefined (NaN)
