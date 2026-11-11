@@ -8,6 +8,21 @@ export const MULTIPOLES_URL = 'multipoles.json'; // pre-computed P_l on an (alph
 
 // Spectra shown in the multipole panel: key in multipoles.json, legend label, colour.
 // A galaxy-matter cross spectrum could be added here later (e.g. key 'P0_gm').
+// Multipole panel plot settings (k in h/Mpc)
+export const PK_PLOT = {
+  kRange: [0, 0.2],     // x-axis range
+  shadeAbove: 0.08,     // grey out k above this (models fitted on 0.02 < k < 0.08 only)
+  shadeLabel: 'not used in fit',
+};
+
+// Fitted parameters shown under the multipole panel. `key` is looked up at the top
+// level of multipoles.json and then inside each model entry. Values are given on
+// the (alpha_h, alpha_s) grid, nested [i_h][i_s] or flat with alpha_s varying
+// fastest; +-Infinity, NaN and null are allowed.
+export const PK_PARAMS = [
+  { key: 'A_over_f', label: 'A/f', note: 'mu_bias model, fitted on 0.02 < k < 0.08 h/Mpc' },
+];
+
 export const SPECTRA = [
   { key: 'P0', label: 'Monopole ℓ = 0', short: 'ℓ = 0', color: '#1b1b1b' },
   { key: 'P2', label: 'Quadrupole ℓ = 2', short: 'ℓ = 2', color: '#d8590b' },

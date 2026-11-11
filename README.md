@@ -139,6 +139,19 @@ ticked. The panel is hidden if `multipoles.json` is missing.
 }
 ```
 
+The plot shows 0 ≤ k ≤ 0.2 h/Mpc and greys out k > 0.08 h/Mpc, which is not used
+in the model fits (fits use 0.02 < k < 0.08 h/Mpc); see `PK_PLOT` in `js/config.js`.
+
+Fitted parameters listed in `PK_PARAMS` (currently `A_over_f`, the A/f parameter
+of the `mu_bias` model) are shown above the plot, interpolated to (α_h, α_s). They
+are given on the same grid, either nested `[i_h][i_s]` or flat with α_s varying
+fastest, and may contain `Infinity`, `-Infinity`, `NaN` or `null` (Python's
+`json.dump` writes the first three, which the page accepts even though they are
+not strictly valid JSON). The cubic spline is used only over runs of finite grid
+values; exactly on an infinite grid point (or between two equal infinities) the
+infinity is shown, and next to an infinite or missing point the value is shown
+as "—", since nothing can be said there (e.g. 0 < α_h < 0.5, where A/f = −∞ at α_h = 0).
+
 `models` may also be an object keyed by model name, e.g.
 `"models": {"mu_bias": {...}, "bias": {...}}`; the key is then used as the label
 (unless the entry has its own `"label"`) and the order in the file sets the line
