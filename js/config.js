@@ -99,8 +99,8 @@ const absMag = (L) => -2.5 * Math.log10(L);
 
 // Derived galaxy columns, added after loading:
 //   unitVector  columns holding the line-of-sight components (mu = cos theta) of the
-//               three orthogonal axes; they are rescaled so that their squares sum to 1
-//               for every galaxy (a no-op if the file already holds unit vectors)
+//               three orthogonal axes; as a safeguard they are rescaled so that their
+//               squares sum to 1 for every galaxy (a no-op for the current table)
 //   squares     [source, new column] pairs; the squared column is listed after its source
 export const DERIVED = {
   unitVector: ['mu_a', 'mu_b', 'mu_z'],
@@ -137,8 +137,7 @@ export const PROPERTIES = {
   is_central: { label: 'Central or satellite', unit: '', menu: false, format: (v) => (v === 1 ? 'central' : 'satellite') },
   sat_frac:   { label: 'Mass fraction in satellites', symbol: 'f_sat', unit: '', centralsOnly: true },
   V_Z_host:   { label: 'Host halo line-of-sight velocity', symbol: 'V_Z,host', unit: 'km/s' },
-  // the column is called b/a but holds the major-to-intermediate ratio a/b >= 1
-  'b/a':      { label: 'Major-to-intermediate axis ratio', symbol: 'a/b', unit: '' },
+  'a/b':      { label: 'Major-to-intermediate axis ratio', symbol: 'a/b', unit: '' },
   // cosines of the angles between the galaxy's axes and the line of sight
   mu_a:       { label: 'Major axis, line-of-sight cosine', symbol: 'μ_a' },
   'mu_a^2':   { label: 'Major axis, squared line-of-sight cosine', symbol: 'μ_a²' },
