@@ -104,6 +104,16 @@ units, a log-scale histogram or an "undefined if zero" rule, add an entry to
 Units used for display: `M_s` in 10¹⁰ M☉; `age` converted from units of
 3.08567758e19 s to Gyr; luminosities are in units of 3631 Jy (shown together with
 the absolute AB magnitude −2.5 log₁₀ L); `I_z` in km/s.
+`SFR` is in units of 10¹⁰ M☉ per 977.79 Gyr (the time unit of `age`) and is shown in
+M☉/yr on a log histogram; galaxies with SFR = 0 are ranked lowest but are not drawn
+in that histogram. The `b/a` column holds the major-to-intermediate axis ratio
+(≥ 1) and is labelled a/b.
+
+`mu_a`, `mu_b` and `mu_z` are the cosines of the angles between the major,
+intermediate and minor axes and the line of sight. They are rescaled on load so
+that μ_a² + μ_b² + μ_c² = 1 for each galaxy (a no-op for unit vectors), and the
+squared cosines `mu_a^2`, `mu_b^2`, `mu_z^2` are added as extra properties (see
+`DERIVED` in `js/config.js`).
 
 ## Code layout
 

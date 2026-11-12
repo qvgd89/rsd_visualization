@@ -1,5 +1,5 @@
 import { MultipolePanel, parseJsonLenient } from './multipoles.js';
-import { DATA_URL, DM_URL, MULTIPOLES_URL, PK_SPLIT_FILES, SPECTRA, PK_PLOT, PK_PARAMS, PK_STYLES, COSMO, RSD_FACTOR, BOX_SIZE, COLS, OPT_COLS, COLORS, propMeta } from './config.js';
+import { DERIVED, DATA_URL, DM_URL, MULTIPOLES_URL, PK_SPLIT_FILES, SPECTRA, PK_PLOT, PK_PARAMS, PK_STYLES, COSMO, RSD_FACTOR, BOX_SIZE, COLS, OPT_COLS, COLORS, propMeta } from './config.js';
 import { loadTable } from './data.js';
 import { Selector, G_BLUE, G_RED, G_NONE } from './selection.js';
 import { ScatterPlot } from './plot.js';
@@ -298,6 +298,12 @@ function updatePanels() {
       parts.push(m.centralsOnly
         ? `${fmtInt(s.nExcluded)} satellites left out (${m.sym} is defined for centrals only).`
         : `${fmtInt(s.nExcluded)} galaxies with ${m.sym} = 0 left out (undefined).`);
+    }
+    if (m.log) {
+      const raw = table.columns[state.prop];
+      let nNonPos = 0;
+      for (const i of selector.rankedOrder(state.prop, m)) if (!(raw[i] > 0)) nNonPos++;
+      if (nNonPos) parts.push(`${fmtInt(nNonPos)} galaxies with ${m.sym} = 0 are ranked lowest but not shown in the log-scale histogram.`);
     }
     parts.push('Ties broken randomly so fractions are exact.');
     cut.innerHTML = parts.join('<br>');
@@ -608,6 +614,34 @@ async function setupMultipoles() {
 }
 
 // ---------------------------------------------------------------------------
+// Derived columns (see DERIVED in config.js)
+// ---------------------------------------------------------------------------
+function addDerivedColumns(t) {
+  const uv = (DERIVED.unitVector || []).map((c) => t.columns[c]);
+  if (uv.length && uv.every(Boolean)) {
+    let maxDev = 0;
+    for (let i = 0; i < t.n; i++) {
+      let s = 0;
+      for (const col of uv) s += col[i] * col[i];
+      const norm = Math.sqrt(s);
+      maxDev = Math.max(maxDev, Math.abs(norm - 1));
+      if (norm > 0) for (const col of uv) col[i] /= norm;
+    }
+    if (maxDev > 1e-6) {
+      console.info(`Rescaled ${DERIVED.unitVector.join(', ')} to unit vectors (largest deviation of the norm from 1: ${maxDev.toPrecision(3)})`);
+    }
+  }
+  for (const [src, name] of DERIVED.squares || []) {
+    const col = t.columns[src];
+    if (!col || t.columns[name]) continue;
+    const sq = new Float64Array(t.n);
+    for (let i = 0; i < t.n; i++) sq[i] = col[i] * col[i];
+    t.columns[name] = sq;
+    t.names.splice(t.names.indexOf(src) + 1, 0, name);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Start-up
 // ---------------------------------------------------------------------------
 async function main() {
@@ -631,6 +665,7 @@ async function main() {
     if (!table.columns[c]) { loading.textContent = `Column ${c} missing from ${DATA_URL}`; return; }
   }
 
+  addDerivedColumns(table);
   xCol = table.columns[COLS.x];
   zReal = table.columns[COLS.los];
   vLos = table.columns[COLS.vlos];

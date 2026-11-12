@@ -18,15 +18,21 @@ export function drawHistogram(canvas, { values, order, groups, colors, lowCut, h
   const m = order.length;
   if (!m) return;
 
-  // Histogram range: 0.5th to 99.5th percentile, outliers piled into the edge bins
-  let lo = values[order[Math.floor(0.005 * (m - 1))]];
-  let hi = values[order[Math.ceil(0.995 * (m - 1))]];
-  if (!(hi > lo)) { lo = values[order[0]]; hi = values[order[m - 1]]; }
+  // Histogram range: 0.5th to 99.5th percentile of the finite values (e.g. log10 of
+  // zero is left out), outliers piled into the edge bins
+  const fin = [];
+  for (let k = 0; k < m; k++) if (Number.isFinite(values[order[k]])) fin.push(order[k]);
+  if (!fin.length) return;
+  const mf = fin.length;
+  let lo = values[fin[Math.floor(0.005 * (mf - 1))]];
+  let hi = values[fin[Math.ceil(0.995 * (mf - 1))]];
+  if (!(hi > lo)) { lo = values[fin[0]]; hi = values[fin[mf - 1]]; }
   if (!(hi > lo)) { lo -= 0.5; hi += 0.5; }
 
   const tot = new Float64Array(NBINS), nb = new Float64Array(NBINS), nr = new Float64Array(NBINS);
   for (let k = 0; k < m; k++) {
     const i = order[k];
+    if (!Number.isFinite(values[i])) continue;
     let b = Math.floor(((values[i] - lo) / (hi - lo)) * NBINS);
     b = b < 0 ? 0 : b >= NBINS ? NBINS - 1 : b;
     tot[b]++;

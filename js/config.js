@@ -92,7 +92,20 @@ export const OPT_COLS = {
 // One unit of the `age` column is 3.08567758e19 s = 977.79 Gyr
 const AGE_UNIT_GYR = 3.08567758e19 / (3.15576e7 * 1e9);
 
+// SFR is in units of 10^10 M☉ per 977.79 Gyr (same time unit as `age`); this converts to M☉/yr
+const SFR_UNIT_MSUN_PER_YR = 1e10 / (AGE_UNIT_GYR * 1e9);
+
 const absMag = (L) => -2.5 * Math.log10(L);
+
+// Derived galaxy columns, added after loading:
+//   unitVector  columns holding the line-of-sight components (mu = cos theta) of the
+//               three orthogonal axes; they are rescaled so that their squares sum to 1
+//               for every galaxy (a no-op if the file already holds unit vectors)
+//   squares     [source, new column] pairs; the squared column is listed after its source
+export const DERIVED = {
+  unitVector: ['mu_a', 'mu_b', 'mu_z'],
+  squares: [['mu_a', 'mu_a^2'], ['mu_b', 'mu_b^2'], ['mu_z', 'mu_z^2']],
+};
 
 // Per-property metadata.
 //   label       description shown in the property menu
@@ -110,6 +123,7 @@ export const PROPERTIES = {
   Z:          { label: 'Real-space position', symbol: 'Z', unit: 'Mpc/h' },
   V_Z:        { label: 'Line-of-sight velocity', symbol: 'V_Z', unit: 'km/s' },
   M_s:        { label: 'Stellar mass', symbol: 'M_s', unit: '10¹⁰ M☉', log: true },
+  SFR:        { label: 'Star formation rate', symbol: 'SFR', unit: 'M☉/yr', scale: SFR_UNIT_MSUN_PER_YR, log: true },
   sigma_V:    { label: 'Stellar velocity dispersion', symbol: 'σ_V', unit: 'km/s' },
   sigma_V_DM: { label: 'Dark matter velocity dispersion', symbol: 'σ_V,DM', unit: 'km/s', excludeZero: true },
   'r-z':      { label: 'Colour', symbol: 'r − z', unit: 'mag' },
@@ -123,6 +137,15 @@ export const PROPERTIES = {
   is_central: { label: 'Central or satellite', unit: '', menu: false, format: (v) => (v === 1 ? 'central' : 'satellite') },
   sat_frac:   { label: 'Mass fraction in satellites', symbol: 'f_sat', unit: '', centralsOnly: true },
   V_Z_host:   { label: 'Host halo line-of-sight velocity', symbol: 'V_Z,host', unit: 'km/s' },
+  // the column is called b/a but holds the major-to-intermediate ratio a/b >= 1
+  'b/a':      { label: 'Major-to-intermediate axis ratio', symbol: 'a/b', unit: '' },
+  // cosines of the angles between the galaxy's axes and the line of sight
+  mu_a:       { label: 'Major axis, line-of-sight cosine', symbol: 'μ_a' },
+  'mu_a^2':   { label: 'Major axis, squared line-of-sight cosine', symbol: 'μ_a²' },
+  mu_b:       { label: 'Intermediate axis, line-of-sight cosine', symbol: 'μ_b' },
+  'mu_b^2':   { label: 'Intermediate axis, squared line-of-sight cosine', symbol: 'μ_b²' },
+  mu_z:       { label: 'Minor axis, line-of-sight cosine', symbol: 'μ_c' },
+  'mu_z^2':   { label: 'Minor axis, squared line-of-sight cosine', symbol: 'μ_c²' },
 };
 
 export function propMeta(name) {
