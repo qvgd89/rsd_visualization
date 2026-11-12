@@ -103,8 +103,8 @@ const absMag = (L) => -2.5 * Math.log10(L);
 //               squares sum to 1 for every galaxy (a no-op for the current table)
 //   squares     [source, new column] pairs; the squared column is listed after its source
 export const DERIVED = {
-  unitVector: ['mu_a', 'mu_b', 'mu_z'],
-  squares: [['mu_a', 'mu_a^2'], ['mu_b', 'mu_b^2'], ['mu_z', 'mu_z^2']],
+  unitVector: ['mu_a', 'mu_b', 'mu_c'],
+  squares: [['mu_a', 'mu_a^2'], ['mu_b', 'mu_b^2'], ['mu_c', 'mu_c^2']],
 };
 
 // Per-property metadata.
@@ -143,8 +143,8 @@ export const PROPERTIES = {
   'mu_a^2':   { label: 'Major axis, squared line-of-sight cosine', symbol: 'μ_a²' },
   mu_b:       { label: 'Intermediate axis, line-of-sight cosine', symbol: 'μ_b' },
   'mu_b^2':   { label: 'Intermediate axis, squared line-of-sight cosine', symbol: 'μ_b²' },
-  mu_z:       { label: 'Minor axis, line-of-sight cosine', symbol: 'μ_c' },
-  'mu_z^2':   { label: 'Minor axis, squared line-of-sight cosine', symbol: 'μ_c²' },
+  mu_c:       { label: 'Minor axis, line-of-sight cosine', symbol: 'μ_c' },
+  'mu_c^2':   { label: 'Minor axis, squared line-of-sight cosine', symbol: 'μ_c²' },
 };
 
 export function propMeta(name) {
