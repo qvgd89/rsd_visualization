@@ -108,10 +108,10 @@ the absolute AB magnitude −2.5 log₁₀ L); `I_z` in km/s.
 M☉/yr on a log histogram; galaxies with SFR = 0 are ranked lowest but are not drawn
 in that histogram.
 
-`mu_a`, `mu_b` and `mu_z` are the cosines of the angles between the major,
+`mu_a`, `mu_b` and `mu_c` are the cosines of the angles between the major,
 intermediate and minor axes and the line of sight. As a safeguard they are rescaled
 on load so that μ_a² + μ_b² + μ_c² = 1 for each galaxy (a no-op for unit vectors), and the
-squared cosines `mu_a^2`, `mu_b^2`, `mu_z^2` are added as extra properties (see
+squared cosines `mu_a^2`, `mu_b^2`, `mu_c^2` are added as extra properties (see
 `DERIVED` in `js/config.js`).
 
 ## Code layout
